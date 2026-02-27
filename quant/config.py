@@ -18,24 +18,24 @@ class Config:
     futures_fee_rate: float = 0.0005  # 0.05%
     slippage_rate: float = 0.0005  # 0.05%
 
-    # Strategy allocation
-    ema_triple_weight: float = 0.25
-    vwap_ema_weight: float = 0.25
-    ichimoku_weight: float = 0.20
-    grid_weight: float = 0.20
-    random_weight: float = 0.10
+    # Strategy allocation (optimized based on backtest results)
+    ema_triple_weight: float = 0.20  # Stable profit +3.74%
+    vwap_ema_weight: float = 0.15  # Reduced due to -3.46% loss
+    ichimoku_weight: float = 0.30  # Increased, best performer +38.21%
+    grid_weight: float = 0.25  # Increased, solid profit +12.29%
+    random_weight: float = 0.10  # Reduced, severe loss -71.89%
 
     # EMA Triple Crossover params
     ema_triple_leverage: float = 2.0
-    ema_triple_stop_loss: float = 0.03  # 3%
+    ema_triple_stop_loss: float = 0.05  # 5% (widened to reduce false triggers)
 
     # VWAP + EMA params
     vwap_ema_leverage: float = 2.0
-    vwap_ema_stop_loss: float = 0.03  # 3%
+    vwap_ema_stop_loss: float = 0.05  # 5% (widened to reduce false triggers)
 
     # Ichimoku Cloud params
     ichimoku_leverage: float = 2.0
-    ichimoku_stop_loss: float = 0.03  # 3%
+    ichimoku_stop_loss: float = 0.05  # 5% (widened to reduce false triggers)
 
     # Dynamic Grid params
     grid_atr_period: int = 14
@@ -49,5 +49,5 @@ class Config:
     random_seed: int = 0  # 0 = truly random seed (different results each run)
     random_buy_prob: float = 0.30
     random_sell_prob: float = 0.30
-    random_leverage: float = 2.0  # Use futures for short selling
-    random_stop_loss: float = 0.03  # 3%
+    random_leverage: float = 1.0  # Reduced from 2.0 due to severe losses
+    random_stop_loss: float = 0.05  # 5% (widened to reduce false triggers)
