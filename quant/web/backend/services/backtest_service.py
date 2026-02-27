@@ -248,7 +248,7 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             df, strategy,
             capital=request.initial_capital,
             fee_rate=request.fee_rate,
-            leverage=1.0,  # Random Monkey always uses 1x leverage
+            leverage=request.random_monkey.leverage,
             stop_loss=request.random_monkey.stop_loss,
         )
         analyzer = Analyzer(

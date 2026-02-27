@@ -43,6 +43,7 @@ class RandomMonkeyParams(BaseModel):
     seed: int = 42
     buy_prob: float = 0.30
     sell_prob: float = 0.30
+    leverage: float = 2.0
     stop_loss: float = 0.03
 
 

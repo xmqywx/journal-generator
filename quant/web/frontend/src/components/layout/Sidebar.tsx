@@ -494,6 +494,20 @@ export function Sidebar() {
               </div>
               <div>
                 <label className="text-xs text-text-secondary">
+                  杠杆: <span className="font-mono">{params.strategies.random_monkey.leverage}x</span>
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  step={0.5}
+                  value={params.strategies.random_monkey.leverage}
+                  onChange={(e) => setStrategyParam('random_monkey', 'leverage', Number(e.target.value))}
+                  className="w-full mt-1 accent-primary"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-text-secondary">
                   止损: <span className="font-mono">{(params.strategies.random_monkey.stop_loss * 100).toFixed(0)}%</span>
                 </label>
                 <input

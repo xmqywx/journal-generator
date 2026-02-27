@@ -56,4 +56,5 @@ class Config:
     random_seed: int = 42
     random_buy_prob: float = 0.30
     random_sell_prob: float = 0.30
+    random_leverage: float = 2.0  # Use futures for short selling
     random_stop_loss: float = 0.03  # 3%

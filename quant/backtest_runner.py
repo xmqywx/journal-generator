@@ -75,10 +75,10 @@ def main():
                 sell_prob=config.random_sell_prob,
             ),
             "weight": config.random_weight,
-            "fee_rate": config.spot_fee_rate,
-            "leverage": 1.0,
+            "fee_rate": config.futures_fee_rate,
+            "leverage": config.random_leverage,
             "stop_loss": config.random_stop_loss,
-            "market": "Spot",
+            "market": "Futures",
         },
     ]
 
