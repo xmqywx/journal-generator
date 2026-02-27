@@ -20,11 +20,11 @@ export const useParamStore = create<ParamStore>((set) => ({
     initial_capital: 690,
     fee_rate: 0.0005,
     strategies: {
-      ema_triple: { enabled: true, leverage: 2, stop_loss: 0.03 },
-      vwap_ema: { enabled: true, leverage: 2, stop_loss: 0.03 },
-      ichimoku: { enabled: true, leverage: 2, stop_loss: 0.03 },
+      ema_triple: { enabled: true, leverage: 2, stop_loss: 0.05 },
+      vwap_ema: { enabled: true, leverage: 2, stop_loss: 0.05 },
+      ichimoku: { enabled: true, leverage: 2, stop_loss: 0.05 },
       dynamic_grid: { enabled: true, atr_period: 14, base_spacing: 0.02, atr_multiplier: 1.0, levels: 7, leverage: 2, stop_loss: 0.05 },
-      random_monkey: { enabled: true, seed: 0, buy_prob: 0.30, sell_prob: 0.30, leverage: 2, stop_loss: 0.03 },
+      random_monkey: { enabled: true, seed: 0, buy_prob: 0.30, sell_prob: 0.30, leverage: 1, stop_loss: 0.05 },
     },
   },
   setParam: (key, value) =>
