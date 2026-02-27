@@ -58,3 +58,66 @@ def test_dynamic_spacing_calculation():
 
     spacing_high = strategy._calculate_spacing(atr=10.0, price=100.0)
     assert spacing_high <= 0.04
+
+
+def test_grid_initialization():
+    """测试网格初始化"""
+    strategy = DynamicGridStrategy(
+        base_spacing=0.02,
+        levels=7,
+    )
+
+    # 初始化网格，中心价 100
+    strategy._initialize_grid(center_price=100.0, spacing=0.02)
+
+    assert strategy.initialized is True
+    assert strategy.center_price == 100.0
+    assert len(strategy.grid_prices) == 7
+
+    # 验证网格价格
+    # 7层: -3, -2, -1, 0, +1, +2, +3
+    # 每层间隔 2%
+    expected_prices = [
+        100 * (1 - 0.02) ** 3,  # -3: ~94.12
+        100 * (1 - 0.02) ** 2,  # -2: ~96.04
+        100 * (1 - 0.02) ** 1,  # -1: ~98.00
+        100,                     #  0: 100.00
+        100 * (1 + 0.02) ** 1,  # +1: ~102.00
+        100 * (1 + 0.02) ** 2,  # +2: ~104.04
+        100 * (1 + 0.02) ** 3,  # +3: ~106.12
+    ]
+
+    for i, (actual, expected) in enumerate(zip(strategy.grid_prices, expected_prices)):
+        assert abs(actual - expected) < 0.01, f"Level {i}: {actual} != {expected}"
+
+
+def test_grid_reset():
+    """测试网格重置"""
+    strategy = DynamicGridStrategy(levels=7)
+
+    # 初始化网格
+    strategy._initialize_grid(center_price=100.0, spacing=0.02)
+    strategy.positions[0] = 100.0  # 模拟持仓
+
+    # 重置网格
+    strategy._reset_grid(new_center=110.0, spacing=0.02)
+
+    assert strategy.center_price == 110.0
+    assert len(strategy.positions) == 0  # 持仓清空
+    assert strategy.grid_prices[3] == 110.0  # 中心层
+
+
+def test_check_breakout():
+    """测试价格突破检测"""
+    strategy = DynamicGridStrategy(levels=7)
+    strategy._initialize_grid(center_price=100.0, spacing=0.02)
+
+    # 价格在网格范围内
+    assert strategy._check_breakout(100.0) is False
+    assert strategy._check_breakout(95.0) is False
+
+    # 价格突破上方
+    assert strategy._check_breakout(110.0) is True
+
+    # 价格突破下方
+    assert strategy._check_breakout(90.0) is True

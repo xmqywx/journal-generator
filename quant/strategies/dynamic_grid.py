@@ -87,6 +87,55 @@ class DynamicGridStrategy(Strategy):
 
         return spacing
 
+    def _initialize_grid(self, center_price: float, spacing: float) -> None:
+        """Initialize grid levels around center price.
+
+        Creates symmetric grid with (levels-1)/2 levels above and below center.
+        Example: 7 levels = 3 above + 1 center + 3 below
+        """
+        self.center_price = center_price
+        self.grid_prices = []
+
+        # Calculate number of levels above/below center
+        half_levels = (self.levels - 1) // 2
+
+        # Create grid levels using compound spacing
+        for i in range(-half_levels, half_levels + 1):
+            if i < 0:
+                # Below center: price * (1 - spacing)^|i|
+                price = center_price * ((1 - spacing) ** abs(i))
+            elif i > 0:
+                # Above center: price * (1 + spacing)^i
+                price = center_price * ((1 + spacing) ** i)
+            else:
+                # Center
+                price = center_price
+
+            self.grid_prices.append(price)
+
+        self.initialized = True
+
+    def _reset_grid(self, new_center: float, spacing: float) -> None:
+        """Reset grid with new center price.
+
+        Clears all positions and reinitializes grid.
+        """
+        self.positions.clear()
+        self._initialize_grid(new_center, spacing)
+
+    def _check_breakout(self, price: float) -> bool:
+        """Check if price has broken out of grid range.
+
+        Returns True if price is outside [lowest_level, highest_level].
+        """
+        if not self.initialized or not self.grid_prices:
+            return False
+
+        lowest = self.grid_prices[0]
+        highest = self.grid_prices[-1]
+
+        return price < lowest or price > highest
+
     def generate_signal(self, df: pd.DataFrame, index: int) -> Signal:
         """Generate trading signal based on grid levels.
 
