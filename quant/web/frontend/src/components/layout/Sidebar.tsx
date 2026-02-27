@@ -100,72 +100,46 @@ export function Sidebar() {
           </div>
         </section>
 
-        {/* 双均线策略 */}
+        {/* EMA Triple 策略 */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">双均线</h2>
+            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">EMA Triple (9/21/200)</h2>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={params.strategies.dual_ma.enabled}
-                onChange={(e) => setStrategyParam('dual_ma', 'enabled', e.target.checked)}
+                checked={params.strategies.ema_triple.enabled}
+                onChange={(e) => setStrategyParam('ema_triple', 'enabled', e.target.checked)}
                 className="sr-only peer"
               />
               <div className="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all"></div>
             </label>
           </div>
-          {params.strategies.dual_ma.enabled && (
+          {params.strategies.ema_triple.enabled && (
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-text-secondary">
-                  快线周期: <span className="font-mono">{params.strategies.dual_ma.fast}</span>
-                </label>
-                <input
-                  type="range"
-                  min={2}
-                  max={50}
-                  value={params.strategies.dual_ma.fast}
-                  onChange={(e) => setStrategyParam('dual_ma', 'fast', Number(e.target.value))}
-                  className="w-full mt-1 accent-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">
-                  慢线周期: <span className="font-mono">{params.strategies.dual_ma.slow}</span>
-                </label>
-                <input
-                  type="range"
-                  min={10}
-                  max={200}
-                  value={params.strategies.dual_ma.slow}
-                  onChange={(e) => setStrategyParam('dual_ma', 'slow', Number(e.target.value))}
-                  className="w-full mt-1 accent-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">
-                  杠杆: <span className="font-mono">{params.strategies.dual_ma.leverage}x</span>
+                  杠杆: <span className="font-mono">{params.strategies.ema_triple.leverage}x</span>
                 </label>
                 <input
                   type="range"
                   min={1}
-                  max={10}
-                  value={params.strategies.dual_ma.leverage}
-                  onChange={(e) => setStrategyParam('dual_ma', 'leverage', Number(e.target.value))}
+                  max={5}
+                  value={params.strategies.ema_triple.leverage}
+                  onChange={(e) => setStrategyParam('ema_triple', 'leverage', Number(e.target.value))}
                   className="w-full mt-1 accent-primary"
                 />
               </div>
               <div>
                 <label className="text-xs text-text-secondary">
-                  止损: <span className="font-mono">{(params.strategies.dual_ma.stop_loss * 100).toFixed(0)}%</span>
+                  止损: <span className="font-mono">{(params.strategies.ema_triple.stop_loss * 100).toFixed(0)}%</span>
                 </label>
                 <input
                   type="range"
                   min={0}
-                  max={0.2}
+                  max={0.1}
                   step={0.01}
-                  value={params.strategies.dual_ma.stop_loss}
-                  onChange={(e) => setStrategyParam('dual_ma', 'stop_loss', Number(e.target.value))}
+                  value={params.strategies.ema_triple.stop_loss}
+                  onChange={(e) => setStrategyParam('ema_triple', 'stop_loss', Number(e.target.value))}
                   className="w-full mt-1 accent-primary"
                 />
               </div>
@@ -173,85 +147,46 @@ export function Sidebar() {
           )}
         </section>
 
-        {/* RSI 策略 */}
+        {/* VWAP+EMA 策略 */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">RSI 反转</h2>
+            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">VWAP+EMA (24h/21)</h2>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={params.strategies.rsi.enabled}
-                onChange={(e) => setStrategyParam('rsi', 'enabled', e.target.checked)}
+                checked={params.strategies.vwap_ema.enabled}
+                onChange={(e) => setStrategyParam('vwap_ema', 'enabled', e.target.checked)}
                 className="sr-only peer"
               />
               <div className="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all"></div>
             </label>
           </div>
-          {params.strategies.rsi.enabled && (
+          {params.strategies.vwap_ema.enabled && (
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-text-secondary">
-                  周期: <span className="font-mono">{params.strategies.rsi.period}</span>
-                </label>
-                <input
-                  type="range"
-                  min={5}
-                  max={30}
-                  value={params.strategies.rsi.period}
-                  onChange={(e) => setStrategyParam('rsi', 'period', Number(e.target.value))}
-                  className="w-full mt-1 accent-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">
-                  超卖线: <span className="font-mono">{params.strategies.rsi.oversold}</span>
-                </label>
-                <input
-                  type="range"
-                  min={10}
-                  max={40}
-                  value={params.strategies.rsi.oversold}
-                  onChange={(e) => setStrategyParam('rsi', 'oversold', Number(e.target.value))}
-                  className="w-full mt-1 accent-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">
-                  超买线: <span className="font-mono">{params.strategies.rsi.overbought}</span>
-                </label>
-                <input
-                  type="range"
-                  min={60}
-                  max={90}
-                  value={params.strategies.rsi.overbought}
-                  onChange={(e) => setStrategyParam('rsi', 'overbought', Number(e.target.value))}
-                  className="w-full mt-1 accent-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">
-                  杠杆: <span className="font-mono">{params.strategies.rsi.leverage}x</span>
+                  杠杆: <span className="font-mono">{params.strategies.vwap_ema.leverage}x</span>
                 </label>
                 <input
                   type="range"
                   min={1}
-                  max={10}
-                  value={params.strategies.rsi.leverage}
-                  onChange={(e) => setStrategyParam('rsi', 'leverage', Number(e.target.value))}
+                  max={5}
+                  value={params.strategies.vwap_ema.leverage}
+                  onChange={(e) => setStrategyParam('vwap_ema', 'leverage', Number(e.target.value))}
                   className="w-full mt-1 accent-primary"
                 />
               </div>
               <div>
                 <label className="text-xs text-text-secondary">
-                  止损: <span className="font-mono">{(params.strategies.rsi.stop_loss * 100).toFixed(0)}%</span>
+                  止损: <span className="font-mono">{(params.strategies.vwap_ema.stop_loss * 100).toFixed(0)}%</span>
                 </label>
                 <input
                   type="range"
                   min={0}
-                  max={0.2}
+                  max={0.1}
                   step={0.01}
-                  value={params.strategies.rsi.stop_loss}
-                  onChange={(e) => setStrategyParam('rsi', 'stop_loss', Number(e.target.value))}
+                  value={params.strategies.vwap_ema.stop_loss}
+                  onChange={(e) => setStrategyParam('vwap_ema', 'stop_loss', Number(e.target.value))}
                   className="w-full mt-1 accent-primary"
                 />
               </div>
@@ -259,73 +194,46 @@ export function Sidebar() {
           )}
         </section>
 
-        {/* 布林带策略 */}
+        {/* Ichimoku 策略 */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">布林带</h2>
+            <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Ichimoku (9/26/52)</h2>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={params.strategies.bollinger.enabled}
-                onChange={(e) => setStrategyParam('bollinger', 'enabled', e.target.checked)}
+                checked={params.strategies.ichimoku.enabled}
+                onChange={(e) => setStrategyParam('ichimoku', 'enabled', e.target.checked)}
                 className="sr-only peer"
               />
               <div className="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all"></div>
             </label>
           </div>
-          {params.strategies.bollinger.enabled && (
+          {params.strategies.ichimoku.enabled && (
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-text-secondary">
-                  周期: <span className="font-mono">{params.strategies.bollinger.period}</span>
-                </label>
-                <input
-                  type="range"
-                  min={5}
-                  max={50}
-                  value={params.strategies.bollinger.period}
-                  onChange={(e) => setStrategyParam('bollinger', 'period', Number(e.target.value))}
-                  className="w-full mt-1 accent-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">
-                  标准差倍数: <span className="font-mono">{params.strategies.bollinger.num_std}</span>
-                </label>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={4}
-                  step={0.1}
-                  value={params.strategies.bollinger.num_std}
-                  onChange={(e) => setStrategyParam('bollinger', 'num_std', Number(e.target.value))}
-                  className="w-full mt-1 accent-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">
-                  杠杆: <span className="font-mono">{params.strategies.bollinger.leverage}x</span>
+                  杠杆: <span className="font-mono">{params.strategies.ichimoku.leverage}x</span>
                 </label>
                 <input
                   type="range"
                   min={1}
-                  max={10}
-                  value={params.strategies.bollinger.leverage}
-                  onChange={(e) => setStrategyParam('bollinger', 'leverage', Number(e.target.value))}
+                  max={5}
+                  value={params.strategies.ichimoku.leverage}
+                  onChange={(e) => setStrategyParam('ichimoku', 'leverage', Number(e.target.value))}
                   className="w-full mt-1 accent-primary"
                 />
               </div>
               <div>
                 <label className="text-xs text-text-secondary">
-                  止损: <span className="font-mono">{(params.strategies.bollinger.stop_loss * 100).toFixed(0)}%</span>
+                  止损: <span className="font-mono">{(params.strategies.ichimoku.stop_loss * 100).toFixed(0)}%</span>
                 </label>
                 <input
                   type="range"
                   min={0}
-                  max={0.2}
+                  max={0.1}
                   step={0.01}
-                  value={params.strategies.bollinger.stop_loss}
-                  onChange={(e) => setStrategyParam('bollinger', 'stop_loss', Number(e.target.value))}
+                  value={params.strategies.ichimoku.stop_loss}
+                  onChange={(e) => setStrategyParam('ichimoku', 'stop_loss', Number(e.target.value))}
                   className="w-full mt-1 accent-primary"
                 />
               </div>
