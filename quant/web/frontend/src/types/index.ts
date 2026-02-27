@@ -6,12 +6,24 @@ export interface BacktestRequest {
   initial_capital: number;
   fee_rate: number;
   strategies: {
-    dual_ma: { enabled: boolean; fast: number; slow: number; leverage: number; stop_loss: number };
-    rsi: { enabled: boolean; period: number; oversold: number; overbought: number; leverage: number; stop_loss: number };
-    bollinger: { enabled: boolean; period: number; num_std: number; leverage: number; stop_loss: number };
+    ema_triple: { enabled: boolean; fast: number; medium: number; slow: number; leverage: number; stop_loss: number };
+    vwap_ema: { enabled: boolean; vwap_period: number; ema_period: number; leverage: number; stop_loss: number };
+    ichimoku: { enabled: boolean; tenkan: number; kijun: number; senkou_b: number; leverage: number; stop_loss: number };
     dynamic_grid: { enabled: boolean; atr_period: number; base_spacing: number; atr_multiplier: number; levels: number; leverage: number; stop_loss: number };
     random_monkey: { enabled: boolean; seed: number; buy_prob: number; sell_prob: number; leverage: number; stop_loss: number };
   };
+}
+
+export interface SignalRecord {
+  timestamp: number;
+  signal: number;
+  price: number;
+}
+
+export interface EquityPoint {
+  timestamp: number;
+  equity: number;
+  position: number;
 }
 
 export interface TradeResult {
@@ -40,6 +52,9 @@ export interface StrategyResult {
   equity_curve: number[];
   metrics: StrategyMetrics;
   trades: TradeResult[];
+  signal_history?: SignalRecord[];
+  equity_details?: EquityPoint[];
+  indicators?: Record<string, number[]>;
 }
 
 export interface BacktestResponse {
