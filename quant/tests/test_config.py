@@ -6,9 +6,9 @@ def test_config_strategy_weights_sum():
     """测试策略权重总和为1.0"""
     config = Config()
     total = (
-        config.dual_ma_weight +
-        config.rsi_weight +
-        config.bollinger_weight +
+        config.ema_triple_weight +
+        config.vwap_ema_weight +
+        config.ichimoku_weight +
         config.grid_weight +
         config.random_weight
     )
@@ -29,7 +29,7 @@ def test_config_grid_params():
 def test_config_random_params():
     """测试随机策略参数"""
     config = Config()
-    assert config.random_seed == 42
+    assert config.random_seed == 0  # 0 = truly random seed
     assert config.random_buy_prob == 0.30
     assert config.random_sell_prob == 0.30
     assert config.random_stop_loss == 0.03
