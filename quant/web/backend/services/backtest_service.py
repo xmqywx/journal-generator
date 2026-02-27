@@ -133,12 +133,35 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
     backtester = Backtester(config)
     results: list[StrategyResult] = []
 
+    # Calculate total enabled weight and allocate capital accordingly
+    total_weight = 0.0
+    if request.ema_triple.enabled:
+        total_weight += config.ema_triple_weight
+    if request.vwap_ema.enabled:
+        total_weight += config.vwap_ema_weight
+    if request.ichimoku.enabled:
+        total_weight += config.ichimoku_weight
+    if request.dynamic_grid.enabled:
+        total_weight += config.grid_weight
+    if request.random_monkey.enabled:
+        total_weight += config.random_weight
+
+    # Total capital is per-strategy capital × number of enabled strategies
+    # Or we can use total capital and allocate by weight
+    total_capital = request.initial_capital * 5  # Assuming 5 strategies max
+
+    def get_capital(weight: float) -> float:
+        """Calculate capital allocation based on weight."""
+        if total_weight == 0:
+            return 0
+        return (weight / total_weight) * total_capital
+
     # EMA Triple
     if request.ema_triple.enabled:
         strategy = EMATripleStrategy()
         bt = backtester.run(
             df, strategy,
-            capital=request.initial_capital,
+            capital=get_capital(config.ema_triple_weight),
             fee_rate=request.fee_rate,
             leverage=request.ema_triple.leverage,
             stop_loss=request.ema_triple.stop_loss,
@@ -183,7 +206,7 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
         strategy = VWAPEMAStrategy()
         bt = backtester.run(
             df, strategy,
-            capital=request.initial_capital,
+            capital=get_capital(config.vwap_ema_weight),
             fee_rate=request.fee_rate,
             leverage=request.vwap_ema.leverage,
             stop_loss=request.vwap_ema.stop_loss,
@@ -228,7 +251,7 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
         strategy = IchimokuStrategy()
         bt = backtester.run(
             df, strategy,
-            capital=request.initial_capital,
+            capital=get_capital(config.ichimoku_weight),
             fee_rate=request.fee_rate,
             leverage=request.ichimoku.leverage,
             stop_loss=request.ichimoku.stop_loss,
@@ -278,7 +301,7 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
         )
         bt = backtester.run(
             df, strategy,
-            capital=request.initial_capital,
+            capital=get_capital(config.grid_weight),
             fee_rate=request.fee_rate,
             leverage=request.dynamic_grid.leverage,
             stop_loss=request.dynamic_grid.stop_loss,
@@ -327,7 +350,7 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
         )
         bt = backtester.run(
             df, strategy,
-            capital=request.initial_capital,
+            capital=get_capital(config.random_weight),
             fee_rate=request.fee_rate,
             leverage=request.random_monkey.leverage,
             stop_loss=request.random_monkey.stop_loss,
