@@ -15,9 +15,9 @@ from quant.data.fetcher import OKXFetcher, BinanceFetcher
 from quant.data.storage import CsvStorage
 from quant.engine.backtester import Backtester
 from quant.report.analyzer import Analyzer
-from quant.strategies.dual_ma import DualMAStrategy
-from quant.strategies.rsi_reversal import RSIReversalStrategy
-from quant.strategies.bollinger_breakout import BollingerBreakoutStrategy
+from quant.strategies.ema_triple import EMATripleStrategy
+from quant.strategies.vwap_ema import VWAPEMAStrategy
+from quant.strategies.ichimoku import IchimokuStrategy
 from quant.strategies.dynamic_grid import DynamicGridStrategy
 from quant.strategies.random_monkey import RandomMonkeyStrategy
 
@@ -27,6 +27,8 @@ from quant.web.backend.schemas import (
     StrategyResult,
     TradeResult,
     CandleData,
+    SignalRecord,
+    EquityPoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,58 @@ def _fetch_data(symbol: str, timeframe: str, lookback_days: int, data_source: st
     return df
 
 
+def _record_backtest_data(
+    strategy,
+    df: pd.DataFrame,
+    bt: dict,
+    request: BacktestRequest
+) -> tuple[list[SignalRecord], list[EquityPoint], dict]:
+    """Record detailed backtest data for analysis.
+
+    Returns:
+        (signal_history, equity_details, indicators)
+    """
+    signal_history = []
+    equity_details = []
+    indicators = {}
+
+    # Record signal at each timestamp
+    for i in range(len(df)):
+        signal = strategy.generate_signal(df, i)
+        indicator_values = strategy.get_indicators(df, i)
+
+        signal_history.append(SignalRecord(
+            timestamp=int(df.iloc[i]['timestamp']),
+            signal=signal.value,
+            price=float(df.iloc[i]['close']),
+            indicators=indicator_values
+        ))
+
+        # Collect indicator time series
+        for key, value in indicator_values.items():
+            if key not in indicators:
+                indicators[key] = []
+            indicators[key].append(value)
+
+    # Record equity details
+    equity_curve = bt["equity_curve"]
+    initial_capital = bt["initial_capital"]
+
+    for i, equity in enumerate(equity_curve):
+        # Calculate drawdown
+        peak = max(equity_curve[:i+1])
+        drawdown = (peak - equity) / peak if peak > 0 else 0.0
+
+        equity_details.append(EquityPoint(
+            timestamp=int(df.iloc[i]['timestamp']),
+            equity=float(equity),
+            drawdown=float(drawdown),
+            position_size=0.0  # TODO: track actual position size
+        ))
+
+    return signal_history, equity_details, indicators
+
+
 def run_backtest(request: BacktestRequest) -> BacktestResponse:
     """Run enabled strategies and return combined results."""
     df = _fetch_data(request.symbol, request.timeframe, request.lookback_days, request.data_source)
@@ -79,16 +133,22 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
     backtester = Backtester(config)
     results: list[StrategyResult] = []
 
-    # Dual MA
-    if request.dual_ma.enabled:
-        strategy = DualMAStrategy(fast=request.dual_ma.fast, slow=request.dual_ma.slow)
+    # EMA Triple
+    if request.ema_triple.enabled:
+        strategy = EMATripleStrategy()
         bt = backtester.run(
             df, strategy,
             capital=request.initial_capital,
             fee_rate=request.fee_rate,
-            leverage=request.dual_ma.leverage,
-            stop_loss=request.dual_ma.stop_loss,
+            leverage=request.ema_triple.leverage,
+            stop_loss=request.ema_triple.stop_loss,
         )
+
+        # Record data
+        signal_history, equity_details, indicators = _record_backtest_data(
+            strategy, df, bt, request
+        )
+
         analyzer = Analyzer(
             initial_capital=bt["initial_capital"],
             final_equity=bt["final_equity"],
@@ -113,24 +173,27 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             equity_curve=bt["equity_curve"],
             metrics=metrics,
             trades=trades,
+            signal_history=signal_history,
+            equity_details=equity_details,
+            indicators=indicators,
         ))
 
-    # RSI Reversal
-    if request.rsi.enabled:
-        strategy = RSIReversalStrategy(
-            period=request.rsi.period,
-            oversold=request.rsi.oversold,
-            overbought=request.rsi.overbought,
-            exit_low=request.rsi.exit_low,
-            exit_high=request.rsi.exit_high,
-        )
+    # VWAP + EMA
+    if request.vwap_ema.enabled:
+        strategy = VWAPEMAStrategy()
         bt = backtester.run(
             df, strategy,
             capital=request.initial_capital,
             fee_rate=request.fee_rate,
-            leverage=request.rsi.leverage,
-            stop_loss=request.rsi.stop_loss,
+            leverage=request.vwap_ema.leverage,
+            stop_loss=request.vwap_ema.stop_loss,
         )
+
+        # Record data
+        signal_history, equity_details, indicators = _record_backtest_data(
+            strategy, df, bt, request
+        )
+
         analyzer = Analyzer(
             initial_capital=bt["initial_capital"],
             final_equity=bt["final_equity"],
@@ -155,21 +218,27 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             equity_curve=bt["equity_curve"],
             metrics=metrics,
             trades=trades,
+            signal_history=signal_history,
+            equity_details=equity_details,
+            indicators=indicators,
         ))
 
-    # Bollinger Breakout
-    if request.bollinger.enabled:
-        strategy = BollingerBreakoutStrategy(
-            period=request.bollinger.period,
-            num_std=request.bollinger.num_std,
-        )
+    # Ichimoku
+    if request.ichimoku.enabled:
+        strategy = IchimokuStrategy()
         bt = backtester.run(
             df, strategy,
             capital=request.initial_capital,
             fee_rate=request.fee_rate,
-            leverage=request.bollinger.leverage,
-            stop_loss=request.bollinger.stop_loss,
+            leverage=request.ichimoku.leverage,
+            stop_loss=request.ichimoku.stop_loss,
         )
+
+        # Record data
+        signal_history, equity_details, indicators = _record_backtest_data(
+            strategy, df, bt, request
+        )
+
         analyzer = Analyzer(
             initial_capital=bt["initial_capital"],
             final_equity=bt["final_equity"],
@@ -194,6 +263,9 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             equity_curve=bt["equity_curve"],
             metrics=metrics,
             trades=trades,
+            signal_history=signal_history,
+            equity_details=equity_details,
+            indicators=indicators,
         ))
 
     # Dynamic Grid
@@ -211,6 +283,12 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             leverage=request.dynamic_grid.leverage,
             stop_loss=request.dynamic_grid.stop_loss,
         )
+
+        # Record data
+        signal_history, equity_details, indicators = _record_backtest_data(
+            strategy, df, bt, request
+        )
+
         analyzer = Analyzer(
             initial_capital=bt["initial_capital"],
             final_equity=bt["final_equity"],
@@ -235,6 +313,9 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             equity_curve=bt["equity_curve"],
             metrics=metrics,
             trades=trades,
+            signal_history=signal_history,
+            equity_details=equity_details,
+            indicators=indicators,
         ))
 
     # Random Monkey
@@ -251,6 +332,12 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             leverage=request.random_monkey.leverage,
             stop_loss=request.random_monkey.stop_loss,
         )
+
+        # Record data
+        signal_history, equity_details, indicators = _record_backtest_data(
+            strategy, df, bt, request
+        )
+
         analyzer = Analyzer(
             initial_capital=bt["initial_capital"],
             final_equity=bt["final_equity"],
@@ -275,6 +362,9 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
             equity_curve=bt["equity_curve"],
             metrics=metrics,
             trades=trades,
+            signal_history=signal_history,
+            equity_details=equity_details,
+            indicators=indicators,
         ))
 
     # Build candle data and timestamps
