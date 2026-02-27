@@ -8,9 +8,9 @@ import sys
 from quant.config import Config
 from quant.data.fetcher import OKXFetcher
 from quant.data.storage import CsvStorage
-from quant.strategies.dual_ma import DualMAStrategy
-from quant.strategies.rsi_reversal import RSIReversalStrategy
-from quant.strategies.bollinger_breakout import BollingerBreakoutStrategy
+from quant.strategies.ema_triple import EMATripleStrategy
+from quant.strategies.vwap_ema import VWAPEMAStrategy
+from quant.strategies.ichimoku import IchimokuStrategy
 from quant.strategies.dynamic_grid import DynamicGridStrategy
 from quant.strategies.random_monkey import RandomMonkeyStrategy
 from quant.engine.backtester import Backtester
@@ -25,34 +25,27 @@ def main():
 
     strategies = [
         {
-            "strategy": DualMAStrategy(fast=config.ma_fast, slow=config.ma_slow),
-            "weight": config.dual_ma_weight,
-            "fee_rate": config.spot_fee_rate,
-            "leverage": 1.0,
-            "stop_loss": 0.0,
-            "market": "Spot",
-        },
-        {
-            "strategy": RSIReversalStrategy(
-                period=config.rsi_period,
-                oversold=config.rsi_oversold,
-                overbought=config.rsi_overbought,
-            ),
-            "weight": config.rsi_weight,
+            "strategy": EMATripleStrategy(),
+            "weight": config.ema_triple_weight,
             "fee_rate": config.futures_fee_rate,
-            "leverage": config.rsi_leverage,
-            "stop_loss": config.rsi_stop_loss,
+            "leverage": config.ema_triple_leverage,
+            "stop_loss": config.ema_triple_stop_loss,
             "market": "Futures",
         },
         {
-            "strategy": BollingerBreakoutStrategy(
-                period=config.bb_period,
-                num_std=config.bb_std,
-            ),
-            "weight": config.bollinger_weight,
+            "strategy": VWAPEMAStrategy(),
+            "weight": config.vwap_ema_weight,
             "fee_rate": config.futures_fee_rate,
-            "leverage": config.bb_leverage,
-            "stop_loss": config.bb_stop_loss,
+            "leverage": config.vwap_ema_leverage,
+            "stop_loss": config.vwap_ema_stop_loss,
+            "market": "Futures",
+        },
+        {
+            "strategy": IchimokuStrategy(),
+            "weight": config.ichimoku_weight,
+            "fee_rate": config.futures_fee_rate,
+            "leverage": config.ichimoku_leverage,
+            "stop_loss": config.ichimoku_stop_loss,
             "market": "Futures",
         },
         {
