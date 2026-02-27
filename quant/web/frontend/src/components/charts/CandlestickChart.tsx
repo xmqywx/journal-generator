@@ -1,0 +1,176 @@
+import { useEffect, useRef } from 'react';
+import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, CandlestickData, LineData, Time } from 'lightweight-charts';
+import type { CandleData } from '../../types';
+import { sma, bollingerBands } from '../../utils/indicators';
+import { useParamStore } from '../../store/params';
+
+interface CandlestickChartProps {
+  candles: CandleData[];
+}
+
+export function CandlestickChart({ candles }: CandlestickChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const lineSeriesRefs = useRef<ISeriesApi<'Line'>[]>([]);
+  const params = useParamStore((s) => s.params);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background: { color: '#FFFFFF' },
+        textColor: '#6B7280',
+        fontFamily: "'Inter', sans-serif",
+      },
+      grid: {
+        vertLines: { color: '#F3F4F6' },
+        horzLines: { color: '#F3F4F6' },
+      },
+      crosshair: {
+        mode: 0,
+      },
+      rightPriceScale: {
+        borderColor: '#E5E7EB',
+      },
+      timeScale: {
+        borderColor: '#E5E7EB',
+        timeVisible: true,
+      },
+      width: containerRef.current.clientWidth,
+      height: 400,
+    });
+
+    chartRef.current = chart;
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#16A34A',
+      downColor: '#DC2626',
+      borderDownColor: '#DC2626',
+      borderUpColor: '#16A34A',
+      wickDownColor: '#DC2626',
+      wickUpColor: '#16A34A',
+    });
+    seriesRef.current = candleSeries;
+
+    const handleResize = () => {
+      if (containerRef.current) {
+        chart.applyOptions({ width: containerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+      lineSeriesRefs.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!chartRef.current || !seriesRef.current || candles.length === 0) return;
+
+    const candleData: CandlestickData[] = candles.map((c) => ({
+      time: (c.timestamp / 1000) as Time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+    }));
+
+    seriesRef.current.setData(candleData);
+
+    // Remove old line overlays
+    lineSeriesRefs.current.forEach((s) => {
+      try { chartRef.current?.removeSeries(s); } catch { /* ignore */ }
+    });
+    lineSeriesRefs.current = [];
+
+    const closes = candles.map((c) => c.close);
+    const times = candles.map((c) => (c.timestamp / 1000) as Time);
+
+    // DualMA overlays
+    if (params.strategies.dual_ma.enabled) {
+      const fastMA = sma(closes, params.strategies.dual_ma.fast);
+      const slowMA = sma(closes, params.strategies.dual_ma.slow);
+
+      const fastLine = chartRef.current.addSeries(LineSeries, {
+        color: '#2563EB',
+        lineWidth: 1,
+        title: `MA${params.strategies.dual_ma.fast}`,
+      });
+      const slowLine = chartRef.current.addSeries(LineSeries, {
+        color: '#F59E0B',
+        lineWidth: 1,
+        title: `MA${params.strategies.dual_ma.slow}`,
+      });
+
+      fastLine.setData(
+        fastMA
+          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
+          .filter(Boolean) as LineData[]
+      );
+      slowLine.setData(
+        slowMA
+          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
+          .filter(Boolean) as LineData[]
+      );
+
+      lineSeriesRefs.current.push(fastLine, slowLine);
+    }
+
+    // Bollinger overlays
+    if (params.strategies.bollinger.enabled) {
+      const bb = bollingerBands(closes, params.strategies.bollinger.period, params.strategies.bollinger.num_std);
+
+      const upperLine = chartRef.current.addSeries(LineSeries, {
+        color: '#8B5CF6',
+        lineWidth: 1,
+        lineStyle: 2,
+        title: 'BB Upper',
+      });
+      const middleLine = chartRef.current.addSeries(LineSeries, {
+        color: '#8B5CF6',
+        lineWidth: 1,
+        title: 'BB Mid',
+      });
+      const lowerLine = chartRef.current.addSeries(LineSeries, {
+        color: '#8B5CF6',
+        lineWidth: 1,
+        lineStyle: 2,
+        title: 'BB Lower',
+      });
+
+      upperLine.setData(
+        bb.upper
+          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
+          .filter(Boolean) as LineData[]
+      );
+      middleLine.setData(
+        bb.middle
+          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
+          .filter(Boolean) as LineData[]
+      );
+      lowerLine.setData(
+        bb.lower
+          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
+          .filter(Boolean) as LineData[]
+      );
+
+      lineSeriesRefs.current.push(upperLine, middleLine, lowerLine);
+    }
+
+    chartRef.current.timeScale().fitContent();
+  }, [candles, params.strategies]);
+
+  return (
+    <div className="bg-white border border-border rounded-lg shadow-sm p-4">
+      <h3 className="text-sm font-semibold text-text-primary mb-3">K 线图</h3>
+      <div ref={containerRef} />
+    </div>
+  );
+}
