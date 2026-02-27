@@ -41,3 +41,9 @@ analyze_xlsx.py
 
 # Virtual env
 /tmp/excel_venv/
+
+# Build artifacts
+journal_generator.min.html
+node_modules/
+package.json
+package-lock.json

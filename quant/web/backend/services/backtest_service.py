@@ -19,7 +19,6 @@ from quant.strategies.ema_triple import EMATripleStrategy
 from quant.strategies.vwap_ema import VWAPEMAStrategy
 from quant.strategies.ichimoku import IchimokuStrategy
 from quant.strategies.dynamic_grid import DynamicGridStrategy
-from quant.strategies.random_monkey import RandomMonkeyStrategy
 
 from quant.web.backend.schemas import (
     BacktestRequest,
@@ -133,35 +132,16 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
     backtester = Backtester(config)
     results: list[StrategyResult] = []
 
-    # Calculate total enabled weight and allocate capital accordingly
-    total_weight = 0.0
-    if request.ema_triple.enabled:
-        total_weight += config.ema_triple_weight
-    if request.vwap_ema.enabled:
-        total_weight += config.vwap_ema_weight
-    if request.ichimoku.enabled:
-        total_weight += config.ichimoku_weight
-    if request.dynamic_grid.enabled:
-        total_weight += config.grid_weight
-    if request.random_monkey.enabled:
-        total_weight += config.random_weight
-
-    # Total capital is per-strategy capital × number of enabled strategies
-    # Or we can use total capital and allocate by weight
-    total_capital = request.initial_capital * 5  # Assuming 5 strategies max
-
-    def get_capital(weight: float) -> float:
-        """Calculate capital allocation based on weight."""
-        if total_weight == 0:
-            return 0
-        return (weight / total_weight) * total_capital
+    # Each strategy gets equal capital for fair comparison
+    # This allows testing and comparing strategy performance directly
+    capital_per_strategy = request.initial_capital
 
     # EMA Triple
     if request.ema_triple.enabled:
         strategy = EMATripleStrategy()
         bt = backtester.run(
             df, strategy,
-            capital=get_capital(config.ema_triple_weight),
+            capital=capital_per_strategy,
             fee_rate=request.fee_rate,
             leverage=request.ema_triple.leverage,
             stop_loss=request.ema_triple.stop_loss,
@@ -206,7 +186,7 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
         strategy = VWAPEMAStrategy()
         bt = backtester.run(
             df, strategy,
-            capital=get_capital(config.vwap_ema_weight),
+            capital=capital_per_strategy,
             fee_rate=request.fee_rate,
             leverage=request.vwap_ema.leverage,
             stop_loss=request.vwap_ema.stop_loss,
@@ -251,7 +231,7 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
         strategy = IchimokuStrategy()
         bt = backtester.run(
             df, strategy,
-            capital=get_capital(config.ichimoku_weight),
+            capital=capital_per_strategy,
             fee_rate=request.fee_rate,
             leverage=request.ichimoku.leverage,
             stop_loss=request.ichimoku.stop_loss,
@@ -301,59 +281,10 @@ def run_backtest(request: BacktestRequest) -> BacktestResponse:
         )
         bt = backtester.run(
             df, strategy,
-            capital=get_capital(config.grid_weight),
+            capital=capital_per_strategy,
             fee_rate=request.fee_rate,
             leverage=request.dynamic_grid.leverage,
             stop_loss=request.dynamic_grid.stop_loss,
-        )
-
-        # Record data
-        signal_history, equity_details, indicators = _record_backtest_data(
-            strategy, df, bt, request
-        )
-
-        analyzer = Analyzer(
-            initial_capital=bt["initial_capital"],
-            final_equity=bt["final_equity"],
-            equity_curve=bt["equity_curve"],
-            trades=bt["trades"],
-        )
-        metrics = analyzer.summary()
-        trades = [
-            TradeResult(
-                entry_price=t.entry_price,
-                exit_price=t.exit_price,
-                size=t.size,
-                side=t.side,
-                pnl=t.pnl,
-                entry_time=t.entry_time,
-                exit_time=t.exit_time,
-            )
-            for t in bt["trades"]
-        ]
-        results.append(StrategyResult(
-            name=strategy.name(),
-            equity_curve=bt["equity_curve"],
-            metrics=metrics,
-            trades=trades,
-            signal_history=signal_history,
-            equity_details=equity_details,
-            indicators=indicators,
-        ))
-
-    # Random Monkey
-    if request.random_monkey.enabled:
-        strategy = RandomMonkeyStrategy(
-            seed=request.random_monkey.seed,
-            buy_prob=request.random_monkey.buy_prob,
-            sell_prob=request.random_monkey.sell_prob,
-        )
-        bt = backtester.run(
-            df, strategy,
-            capital=get_capital(config.random_weight),
-            fee_rate=request.fee_rate,
-            leverage=request.random_monkey.leverage,
-            stop_loss=request.random_monkey.stop_loss,
         )
 
         # Record data

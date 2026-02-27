@@ -10,7 +10,6 @@ export interface BacktestRequest {
     vwap_ema: { enabled: boolean; vwap_period: number; ema_period: number; leverage: number; stop_loss: number };
     ichimoku: { enabled: boolean; tenkan: number; kijun: number; senkou_b: number; leverage: number; stop_loss: number };
     dynamic_grid: { enabled: boolean; atr_period: number; base_spacing: number; atr_multiplier: number; levels: number; leverage: number; stop_loss: number };
-    random_monkey: { enabled: boolean; seed: number; buy_prob: number; sell_prob: number; leverage: number; stop_loss: number };
   };
 }
 

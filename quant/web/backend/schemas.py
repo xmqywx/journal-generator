@@ -45,15 +45,6 @@ class DynamicGridParams(BaseModel):
     stop_loss: float = 0.05
 
 
-class RandomMonkeyParams(BaseModel):
-    enabled: bool = True
-    seed: int = 42
-    buy_prob: float = 0.30
-    sell_prob: float = 0.30
-    leverage: float = 2.0
-    stop_loss: float = 0.03
-
-
 class BacktestRequest(BaseModel):
     symbol: str = "BTC-USDT"
     timeframe: str = "1H"
@@ -65,7 +56,6 @@ class BacktestRequest(BaseModel):
     vwap_ema: VWAPEMAParams = Field(default_factory=VWAPEMAParams)
     ichimoku: IchimokuParams = Field(default_factory=IchimokuParams)
     dynamic_grid: DynamicGridParams = Field(default_factory=DynamicGridParams)
-    random_monkey: RandomMonkeyParams = Field(default_factory=RandomMonkeyParams)
 
 
 class TradeResult(BaseModel):

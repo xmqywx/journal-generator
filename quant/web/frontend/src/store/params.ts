@@ -5,7 +5,7 @@ interface ParamStore {
   params: BacktestRequest;
   setParam: <K extends keyof BacktestRequest>(key: K, value: BacktestRequest[K]) => void;
   setStrategyParam: (
-    strategy: 'ema_triple' | 'vwap_ema' | 'ichimoku' | 'dynamic_grid' | 'random_monkey',
+    strategy: 'ema_triple' | 'vwap_ema' | 'ichimoku' | 'dynamic_grid',
     key: string,
     value: number | boolean
   ) => void;
@@ -24,7 +24,6 @@ export const useParamStore = create<ParamStore>((set) => ({
       vwap_ema: { enabled: true, leverage: 2, stop_loss: 0.05 },
       ichimoku: { enabled: true, leverage: 2, stop_loss: 0.05 },
       dynamic_grid: { enabled: true, atr_period: 14, base_spacing: 0.02, atr_multiplier: 1.0, levels: 7, leverage: 2, stop_loss: 0.05 },
-      random_monkey: { enabled: true, seed: 0, buy_prob: 0.30, sell_prob: 0.30, leverage: 1, stop_loss: 0.05 },
     },
   },
   setParam: (key, value) =>

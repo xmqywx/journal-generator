@@ -93,76 +93,8 @@ export function CandlestickChart({ candles }: CandlestickChartProps) {
     const closes = candles.map((c) => c.close);
     const times = candles.map((c) => (c.timestamp / 1000) as Time);
 
-    // DualMA overlays
-    if (params.strategies.dual_ma.enabled) {
-      const fastMA = sma(closes, params.strategies.dual_ma.fast);
-      const slowMA = sma(closes, params.strategies.dual_ma.slow);
-
-      const fastLine = chartRef.current.addSeries(LineSeries, {
-        color: '#2563EB',
-        lineWidth: 1,
-        title: `MA${params.strategies.dual_ma.fast}`,
-      });
-      const slowLine = chartRef.current.addSeries(LineSeries, {
-        color: '#F59E0B',
-        lineWidth: 1,
-        title: `MA${params.strategies.dual_ma.slow}`,
-      });
-
-      fastLine.setData(
-        fastMA
-          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
-          .filter(Boolean) as LineData[]
-      );
-      slowLine.setData(
-        slowMA
-          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
-          .filter(Boolean) as LineData[]
-      );
-
-      lineSeriesRefs.current.push(fastLine, slowLine);
-    }
-
-    // Bollinger overlays
-    if (params.strategies.bollinger.enabled) {
-      const bb = bollingerBands(closes, params.strategies.bollinger.period, params.strategies.bollinger.num_std);
-
-      const upperLine = chartRef.current.addSeries(LineSeries, {
-        color: '#8B5CF6',
-        lineWidth: 1,
-        lineStyle: 2,
-        title: 'BB Upper',
-      });
-      const middleLine = chartRef.current.addSeries(LineSeries, {
-        color: '#8B5CF6',
-        lineWidth: 1,
-        title: 'BB Mid',
-      });
-      const lowerLine = chartRef.current.addSeries(LineSeries, {
-        color: '#8B5CF6',
-        lineWidth: 1,
-        lineStyle: 2,
-        title: 'BB Lower',
-      });
-
-      upperLine.setData(
-        bb.upper
-          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
-          .filter(Boolean) as LineData[]
-      );
-      middleLine.setData(
-        bb.middle
-          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
-          .filter(Boolean) as LineData[]
-      );
-      lowerLine.setData(
-        bb.lower
-          .map((v, i) => (v !== null ? { time: times[i], value: v } : null))
-          .filter(Boolean) as LineData[]
-      );
-
-      lineSeriesRefs.current.push(upperLine, middleLine, lowerLine);
-    }
+    // TODO: Add indicator overlays for new strategies (EMA Triple, VWAP+EMA, Ichimoku)
+    // Can be implemented based on strategy selection and result data
 
     chartRef.current.timeScale().fitContent();
   }, [candles, params.strategies]);
