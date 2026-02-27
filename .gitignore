@@ -1,0 +1,43 @@
+# OS
+.DS_Store
+
+# Temp files
+*.pyc
+__pycache__/
+.~*
+
+# Large/sensitive files
+*.sql
+*.ppk
+id_rsa*
+*.zip
+
+# Unrelated docs
+*.doc
+*.docx
+*.csv
+
+# Directories not part of this project
+RequirementsDocument/
+RequirementsDocument 2/
+car/
+carRecyFront/
+carRecycle/
+clickhouse/
+link/
+linkClaude/
+logo/
+daily/
+北京盛安德青岛西海岸分公司*
+盛安德青岛西海岸分公司*
+
+# Excel files (except template)
+青岛西海岸分公司日记账*.xlsx
+评估功能清单*.xlsx
+faq-template*.xlsx
+
+# Python analysis script
+analyze_xlsx.py
+
+# Virtual env
+/tmp/excel_venv/
