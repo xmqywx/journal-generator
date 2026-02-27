@@ -1,4 +1,5 @@
 import random
+import time
 import pandas as pd
 from quant.strategies.base import Strategy, Signal
 
@@ -7,7 +8,7 @@ class RandomMonkeyStrategy(Strategy):
     """Random trading strategy as a performance baseline.
 
     Generates random trading signals with configurable probabilities.
-    Uses a fixed seed for reproducible backtesting.
+    Uses a fixed seed for reproducible backtesting, or truly random seed when seed=0.
     """
 
     def __init__(
@@ -18,7 +19,7 @@ class RandomMonkeyStrategy(Strategy):
     ):
         """
         Args:
-            seed: Random seed for reproducibility
+            seed: Random seed for reproducibility. Use 0 for truly random seed (different results each run).
             buy_prob: Probability of generating BUY signal (0.0-1.0)
             sell_prob: Probability of generating SELL signal (0.0-1.0)
             Remaining probability goes to HOLD signal
@@ -29,7 +30,8 @@ class RandomMonkeyStrategy(Strategy):
         if buy_prob + sell_prob > 1.0:
             raise ValueError("buy_prob + sell_prob must be <= 1.0")
 
-        self.seed = seed
+        # Use timestamp as seed when seed=0 for truly random behavior
+        self.seed = int(time.time() * 1000000) if seed == 0 else seed
         self.buy_prob = buy_prob
         self.sell_prob = sell_prob
 

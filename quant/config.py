@@ -53,7 +53,7 @@ class Config:
     grid_stop_loss: float = 0.05  # 5%
 
     # Random Monkey params
-    random_seed: int = 42
+    random_seed: int = 0  # 0 = truly random seed (different results each run)
     random_buy_prob: float = 0.30
     random_sell_prob: float = 0.30
     random_leverage: float = 2.0  # Use futures for short selling

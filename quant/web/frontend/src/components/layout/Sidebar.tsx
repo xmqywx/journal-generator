@@ -453,11 +453,12 @@ export function Sidebar() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-text-secondary">
-                  随机种子: <span className="font-mono">{params.strategies.random_monkey.seed}</span>
+                  随机种子: <span className="font-mono">{params.strategies.random_monkey.seed === 0 ? '真随机' : params.strategies.random_monkey.seed}</span>
+                  <span className="text-[10px] text-text-tertiary ml-1">(0=每次不同)</span>
                 </label>
                 <input
                   type="range"
-                  min={1}
+                  min={0}
                   max={100}
                   value={params.strategies.random_monkey.seed}
                   onChange={(e) => setStrategyParam('random_monkey', 'seed', Number(e.target.value))}
