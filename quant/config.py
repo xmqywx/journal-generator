@@ -19,30 +19,23 @@ class Config:
     slippage_rate: float = 0.0005  # 0.05%
 
     # Strategy allocation
-    dual_ma_weight: float = 0.25
-    rsi_weight: float = 0.20
-    bollinger_weight: float = 0.20
-    grid_weight: float = 0.25
+    ema_triple_weight: float = 0.25
+    vwap_ema_weight: float = 0.25
+    ichimoku_weight: float = 0.20
+    grid_weight: float = 0.20
     random_weight: float = 0.10
 
-    # Dual MA params
-    ma_fast: int = 7
-    ma_slow: int = 25
+    # EMA Triple Crossover params
+    ema_triple_leverage: float = 2.0
+    ema_triple_stop_loss: float = 0.03  # 3%
 
-    # RSI params
-    rsi_period: int = 14
-    rsi_oversold: float = 30.0
-    rsi_overbought: float = 70.0
-    rsi_exit_low: float = 40.0
-    rsi_exit_high: float = 60.0
-    rsi_stop_loss: float = 0.05
-    rsi_leverage: float = 2.0
+    # VWAP + EMA params
+    vwap_ema_leverage: float = 2.0
+    vwap_ema_stop_loss: float = 0.03  # 3%
 
-    # Bollinger params
-    bb_period: int = 20
-    bb_std: float = 2.0
-    bb_stop_loss: float = 0.03
-    bb_leverage: float = 2.0
+    # Ichimoku Cloud params
+    ichimoku_leverage: float = 2.0
+    ichimoku_stop_loss: float = 0.03  # 3%
 
     # Dynamic Grid params
     grid_atr_period: int = 14
