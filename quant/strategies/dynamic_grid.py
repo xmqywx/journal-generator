@@ -139,6 +139,70 @@ class DynamicGridStrategy(Strategy):
     def generate_signal(self, df: pd.DataFrame, index: int) -> Signal:
         """Generate trading signal based on grid levels.
 
-        This is a placeholder that will be implemented in next task.
+        Logic:
+        1. If grid not initialized, initialize and return HOLD
+        2. Check if price broke out of grid, reset if needed
+        3. Check which grid level was touched
+        4. Generate BUY for lower levels, SELL for upper levels
         """
+        if index < self.min_periods() - 1:
+            return Signal.HOLD
+
+        # Get current price
+        current_price = df['close'].iloc[index]
+
+        # Initialize grid on first valid signal
+        if not self.initialized:
+            atr = self._calculate_atr(df.iloc[: index + 1], self.atr_period)
+            spacing = self._calculate_spacing(atr, current_price)
+            self._initialize_grid(current_price, spacing)
+            return Signal.HOLD
+
+        # Check for breakout and reset if needed
+        if self._check_breakout(current_price):
+            atr = self._calculate_atr(df.iloc[: index + 1], self.atr_period)
+            spacing = self._calculate_spacing(atr, current_price)
+            self._reset_grid(current_price, spacing)
+            return Signal.HOLD
+
+        # Find which grid level is closest
+        closest_level = self._find_closest_level(current_price)
+        center_level = (self.levels - 1) // 2
+
+        # Generate signals based on grid level
+        if closest_level < center_level:
+            # Below center - BUY signal
+            # Only buy if we don't already have position at this level
+            if closest_level not in self.positions:
+                self.positions[closest_level] = current_price
+                return Signal.BUY
+        elif closest_level > center_level:
+            # Above center - SELL signal
+            # Only sell if we have positions at lower levels
+            if len(self.positions) > 0:
+                # Clear lowest position
+                if self.positions:
+                    lowest_level = min(self.positions.keys())
+                    del self.positions[lowest_level]
+                return Signal.SELL
+
         return Signal.HOLD
+
+    def _find_closest_level(self, price: float) -> int:
+        """Find the grid level closest to given price.
+
+        Returns the index (0 to levels-1) of the closest grid level.
+        """
+        if not self.grid_prices:
+            return 0
+
+        min_distance = float('inf')
+        closest_idx = 0
+
+        for i, grid_price in enumerate(self.grid_prices):
+            distance = abs(price - grid_price)
+            if distance < min_distance:
+                min_distance = distance
+                closest_idx = i
+
+        return closest_idx
