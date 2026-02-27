@@ -195,6 +195,23 @@ class DynamicGridStrategy(Strategy):
 
         return Signal.HOLD
 
+    def get_indicators(self, df: pd.DataFrame, index: int) -> dict:
+        """Return grid state for recording"""
+        if not self.initialized or index < self.min_periods():
+            return {}
+
+        atr = self._calculate_atr(df.iloc[:index + 1], self.atr_period)
+        current_price = df.iloc[index]['close']
+        spacing = self._calculate_spacing(atr, current_price)
+
+        return {
+            'atr': float(atr),
+            'spacing': float(spacing),
+            'grid_levels': len(self.grid_prices) if self.grid_prices else 0,
+            'price': float(current_price),
+            'last_signal_level': float(self.last_signal_level) if self.last_signal_level is not None else 0.0
+        }
+
     def _find_closest_level(self, price: float) -> int:
         """Find the grid level closest to given price.
 

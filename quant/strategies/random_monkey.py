@@ -61,3 +61,12 @@ class RandomMonkeyStrategy(Strategy):
             return Signal.SELL
         else:
             return Signal.HOLD
+
+    def get_indicators(self, df: pd.DataFrame, index: int) -> dict:
+        """Return random state for recording"""
+        return {
+            'seed': self.seed,
+            'buy_prob': self.buy_prob,
+            'sell_prob': self.sell_prob,
+            'price': float(df.iloc[index]['close'])
+        }

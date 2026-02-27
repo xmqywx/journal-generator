@@ -24,3 +24,14 @@ class Strategy(ABC):
     def min_periods(self) -> int:
         """Minimum number of candles needed before strategy can generate signals."""
         return 0
+
+    def get_indicators(self, df: pd.DataFrame, index: int) -> dict:
+        """Get indicator values at current index for data recording.
+
+        Subclasses should override this to return strategy-specific indicators.
+        Used for backtest analysis and debugging.
+
+        Returns:
+            dict: Indicator names mapped to their current values
+        """
+        return {}
