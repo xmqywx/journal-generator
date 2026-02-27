@@ -39,6 +39,7 @@ class DynamicGridStrategy(Strategy):
         self.positions: Dict[int, float] = {}  # level -> entry_price
         self.center_price: Optional[float] = None
         self.initialized = False
+        self.last_signal_level: Optional[int] = None  # Track last signaled level
 
     def name(self) -> str:
         spacing_pct = self.base_spacing * 100
@@ -121,6 +122,7 @@ class DynamicGridStrategy(Strategy):
         Clears all positions and reinitializes grid.
         """
         self.positions.clear()
+        self.last_signal_level = None  # Clear last signal level
         self._initialize_grid(new_center, spacing)
 
     def _check_breakout(self, price: float) -> bool:
@@ -169,6 +171,13 @@ class DynamicGridStrategy(Strategy):
         closest_level = self._find_closest_level(current_price)
         center_level = (self.levels - 1) // 2
 
+        # Don't generate duplicate signals at same level
+        if closest_level == self.last_signal_level:
+            return Signal.HOLD
+
+        # Update last signal level
+        self.last_signal_level = closest_level
+
         # Generate signals based on grid level
         if closest_level < center_level:
             # Below center - BUY signal
@@ -180,10 +189,8 @@ class DynamicGridStrategy(Strategy):
             # Above center - SELL signal
             # Only sell if we have positions at lower levels
             if len(self.positions) > 0:
-                # Clear lowest position
-                if self.positions:
-                    lowest_level = min(self.positions.keys())
-                    del self.positions[lowest_level]
+                lowest_level = min(self.positions.keys())
+                del self.positions[lowest_level]
                 return Signal.SELL
 
         return Signal.HOLD

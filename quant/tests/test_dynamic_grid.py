@@ -222,3 +222,105 @@ def test_grid_reset_on_breakout():
 
     assert strategy.center_price != old_center
     assert abs(strategy.center_price - 123) < 1.0  # 新中心接近当前价格
+
+
+def test_duplicate_signal_prevention():
+    """测试防止在同一网格层级重复生成信号"""
+    strategy = DynamicGridStrategy(
+        atr_period=3,
+        base_spacing=0.02,
+        levels=7,
+    )
+
+    df = pd.DataFrame({
+        'high': [102, 105, 103, 102, 100, 100, 100],
+        'low': [98, 101, 99, 98, 96, 96, 96],
+        'close': [100, 104, 101, 100, 98, 98, 98],
+    })
+
+    # 初始化网格（index 3, price=100）
+    # Grid will be: ~[93.85, 95.86, 97.91, 100.00, 102.09, 104.23, 106.41]
+    strategy.generate_signal(df, 3)
+
+    # 价格下跌到 98（index 4），应该触发买入（level 2）
+    signal1 = strategy.generate_signal(df, 4)
+    assert signal1 == Signal.BUY
+    assert 2 in strategy.positions  # level 2 should have a position
+
+    # 价格仍然在 98（index 5），应该返回 HOLD（防止重复信号）
+    signal2 = strategy.generate_signal(df, 5)
+    assert signal2 == Signal.HOLD
+    assert len(strategy.positions) == 1  # 仍然只有一个持仓
+
+    # 价格仍然在 98（index 6），应该返回 HOLD
+    signal3 = strategy.generate_signal(df, 6)
+    assert signal3 == Signal.HOLD
+    assert len(strategy.positions) == 1  # 仍然只有一个持仓
+
+
+def test_duplicate_sell_prevention():
+    """测试防止在同一网格层级重复卖出"""
+    strategy = DynamicGridStrategy(
+        atr_period=3,
+        base_spacing=0.02,
+        levels=7,
+    )
+
+    df = pd.DataFrame({
+        'high': [102, 105, 103, 102, 105, 105, 105],
+        'low': [98, 101, 99, 98, 101, 101, 101],
+        'close': [100, 104, 101, 100, 103, 103, 103],
+    })
+
+    # 初始化网格（index 3, price=100）
+    # Grid will be: ~[93.85, 95.86, 97.91, 100.00, 102.09, 104.23, 106.41]
+    strategy.generate_signal(df, 3)
+
+    # 先添加持仓（模拟之前买入）
+    strategy.positions[1] = 96.0  # level 1
+    strategy.positions[2] = 98.0  # level 2
+
+    # 价格上涨到 103（index 4），应该触发卖出（level 4）
+    signal1 = strategy.generate_signal(df, 4)
+    assert signal1 == Signal.SELL
+    assert len(strategy.positions) == 1  # 卖出了一个持仓
+
+    # 价格仍然在 103（index 5），应该返回 HOLD（防止重复卖出）
+    signal2 = strategy.generate_signal(df, 5)
+    assert signal2 == Signal.HOLD
+    assert len(strategy.positions) == 1  # 持仓数不变
+
+    # 价格仍然在 103（index 6），应该返回 HOLD
+    signal3 = strategy.generate_signal(df, 6)
+    assert signal3 == Signal.HOLD
+    assert len(strategy.positions) == 1  # 持仓数不变
+
+
+def test_state_reset_on_breakout():
+    """测试价格突破时完全重置状态"""
+    strategy = DynamicGridStrategy(
+        atr_period=3,
+        base_spacing=0.02,
+        levels=7,
+    )
+
+    df = pd.DataFrame({
+        'high': [102, 105, 103, 102, 125],
+        'low': [98, 101, 99, 98, 121],
+        'close': [100, 104, 101, 100, 123],
+    })
+
+    # 初始化网格（index 3, price=100）
+    strategy.generate_signal(df, 3)
+
+    # 添加持仓和设置 last_signal_level
+    strategy.positions[1] = 96.0
+    strategy.positions[2] = 98.0
+    strategy.last_signal_level = 2
+
+    # 价格突破到 123（index 4），应该完全重置状态
+    strategy.generate_signal(df, 4)
+
+    assert len(strategy.positions) == 0  # 持仓应该被清空
+    assert strategy.last_signal_level is None  # last_signal_level 应该被清空
+    assert strategy.center_price == 123.0  # 网格中心更新为新价格
