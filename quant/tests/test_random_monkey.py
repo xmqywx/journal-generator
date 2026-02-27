@@ -49,3 +49,36 @@ def test_random_monkey_probability_distribution():
     assert 250 <= buy_count <= 350  # 预期 30%
     assert 250 <= sell_count <= 350  # 预期 30%
     assert 350 <= hold_count <= 450  # 预期 40%
+
+
+def test_random_monkey_invalid_probabilities():
+    """测试无效概率的验证"""
+    # 测试概率和 > 1.0
+    with pytest.raises(ValueError, match="buy_prob \\+ sell_prob must be <= 1.0"):
+        RandomMonkeyStrategy(buy_prob=0.7, sell_prob=0.5)
+
+    # 测试负概率
+    with pytest.raises(ValueError, match="Probabilities must be between 0.0 and 1.0"):
+        RandomMonkeyStrategy(buy_prob=-0.1, sell_prob=0.3)
+
+    with pytest.raises(ValueError, match="Probabilities must be between 0.0 and 1.0"):
+        RandomMonkeyStrategy(buy_prob=0.3, sell_prob=-0.1)
+
+    # 测试概率 > 1.0
+    with pytest.raises(ValueError, match="Probabilities must be between 0.0 and 1.0"):
+        RandomMonkeyStrategy(buy_prob=1.5, sell_prob=0.3)
+
+
+def test_random_monkey_edge_cases():
+    """测试边界情况"""
+    df = pd.DataFrame({'close': [100] * 10})
+
+    # 测试 buy_prob + sell_prob = 1.0
+    strategy = RandomMonkeyStrategy(buy_prob=0.5, sell_prob=0.5)
+    signal = strategy.generate_signal(df, 5)
+    assert signal in [Signal.BUY, Signal.SELL]  # 不应该是 HOLD
+
+    # 测试零概率（应该总是 HOLD）
+    strategy = RandomMonkeyStrategy(buy_prob=0.0, sell_prob=0.0)
+    for i in range(10):
+        assert strategy.generate_signal(df, i) == Signal.HOLD

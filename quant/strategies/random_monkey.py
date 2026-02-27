@@ -23,6 +23,9 @@ class RandomMonkeyStrategy(Strategy):
             sell_prob: Probability of generating SELL signal (0.0-1.0)
             Remaining probability goes to HOLD signal
         """
+        if not (0.0 <= buy_prob <= 1.0) or not (0.0 <= sell_prob <= 1.0):
+            raise ValueError("Probabilities must be between 0.0 and 1.0")
+
         if buy_prob + sell_prob > 1.0:
             raise ValueError("buy_prob + sell_prob must be <= 1.0")
 
