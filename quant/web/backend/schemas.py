@@ -1,29 +1,36 @@
 from pydantic import BaseModel, Field
 
 
-class DualMAParams(BaseModel):
-    enabled: bool = True
-    fast: int = 7
-    slow: int = 25
-    leverage: float = 1.0
-    stop_loss: float = 0.0
+class SignalRecord(BaseModel):
+    """Signal generated at specific timestamp"""
+    timestamp: int
+    signal: str  # "BUY", "SELL", "HOLD"
+    price: float
+    indicators: dict = {}  # Strategy-specific indicator values
 
 
-class RSIParams(BaseModel):
+class EquityPoint(BaseModel):
+    """Detailed equity curve point"""
+    timestamp: int
+    equity: float
+    drawdown: float  # Current drawdown percentage
+    position_size: float  # Current position size
+
+
+class EMATripleParams(BaseModel):
     enabled: bool = True
-    period: int = 14
-    oversold: float = 30.0
-    overbought: float = 70.0
-    exit_low: float = 40.0
-    exit_high: float = 60.0
     leverage: float = 2.0
-    stop_loss: float = 0.05
+    stop_loss: float = 0.03
 
 
-class BollingerParams(BaseModel):
+class VWAPEMAParams(BaseModel):
     enabled: bool = True
-    period: int = 20
-    num_std: float = 2.0
+    leverage: float = 2.0
+    stop_loss: float = 0.03
+
+
+class IchimokuParams(BaseModel):
+    enabled: bool = True
     leverage: float = 2.0
     stop_loss: float = 0.03
 
@@ -54,9 +61,9 @@ class BacktestRequest(BaseModel):
     data_source: str = "okx"
     initial_capital: float = 690.0
     fee_rate: float = 0.0005
-    dual_ma: DualMAParams = Field(default_factory=DualMAParams)
-    rsi: RSIParams = Field(default_factory=RSIParams)
-    bollinger: BollingerParams = Field(default_factory=BollingerParams)
+    ema_triple: EMATripleParams = Field(default_factory=EMATripleParams)
+    vwap_ema: VWAPEMAParams = Field(default_factory=VWAPEMAParams)
+    ichimoku: IchimokuParams = Field(default_factory=IchimokuParams)
     dynamic_grid: DynamicGridParams = Field(default_factory=DynamicGridParams)
     random_monkey: RandomMonkeyParams = Field(default_factory=RandomMonkeyParams)
 
@@ -76,6 +83,11 @@ class StrategyResult(BaseModel):
     equity_curve: list[float]
     metrics: dict
     trades: list[TradeResult]
+
+    # New data recording fields
+    signal_history: list[SignalRecord] = []
+    equity_details: list[EquityPoint] = []
+    indicators: dict = {}  # Full time series: {"ema_9": [val1, val2, ...], ...}
 
 
 class CandleData(BaseModel):
