@@ -224,6 +224,11 @@ class BacktestEngine:
             signal, strength = strategy.generate_signal(df, df, index)
             return signal, {'strength': strength}
 
+        elif strategy_class == 'MultiTimeframeTrendStrategy':
+            # 多周期趋势策略需要regime参数
+            signal, strength = strategy.generate_signal(df, index, regime)
+            return signal, {'strength': strength}
+
         else:
             # 通用策略接口
             try:
