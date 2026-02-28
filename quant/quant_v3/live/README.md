@@ -17,8 +17,113 @@ cd /Users/ying/Documents/Kris/quant/quant_v3/live
 - ✅ 一键确认交易
 - ✅ 完整历史记录
 - ✅ 移动端友好
+- ✅ **新增：策略回测系统** 📊
 
 详细说明请查看：[WEB_UI_GUIDE.md](WEB_UI_GUIDE.md)
+
+---
+
+## 📊 回测系统（新功能）
+
+### 功能特性
+
+**完整的策略回测平台：**
+- ✅ 历史数据回测 - 测试任何时间段的策略表现
+- ✅ TradingView图表 - 可视化入场/出场点和资金曲线
+- ✅ 实时进度更新 - WebSocket实时反馈
+- ✅ 综合性能指标 - Sharpe比率、最大回撤、胜率等
+- ✅ 交易明细分析 - 逐笔查看盈亏和持仓天数
+- ✅ 历史管理 - 保存、加载、对比多次回测
+- ✅ 数据缓存 - 加速重复回测
+
+### 快速开始
+
+1. **启动Web应用：**
+   ```bash
+   cd /Users/ying/Documents/Kris/quant/quant_v3/live
+   python web_app.py
+   ```
+
+2. **访问回测页面：**
+   - 浏览器打开 http://localhost:5000
+   - 点击"Backtest"菜单
+
+3. **配置回测参数：**
+   - 交易对（BTCUSDT、ETHUSDT等）
+   - 时间范围（开始/结束日期）
+   - 初始资金、杠杆、手续费率
+   - 策略参数（移动平均周期）
+
+4. **运行并查看结果：**
+   - 点击"Start Backtest"
+   - 查看实时进度
+   - 分析性能指标和图表
+   - 查看所有交易明细
+
+### 核心指标说明
+
+| 指标 | 含义 | 好的范围 |
+|------|------|----------|
+| **Total Return** | 总收益率 | > 0% |
+| **Sharpe Ratio** | 风险调整后收益 | > 2.0 (优秀) |
+| **Max Drawdown** | 最大回撤 | < 25% |
+| **Win Rate** | 胜率 | > 60% |
+| **P/L Ratio** | 盈亏比 | > 2.0 |
+
+### 数据库配置
+
+回测系统使用PostgreSQL存储结果，首次使用需配置：
+
+1. **复制配置模板：**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **编辑数据库连接：**
+   ```bash
+   nano .env
+   # 设置 DATABASE_URL=postgresql://username@localhost:5432/quant_backtest
+   ```
+
+3. **初始化数据库：**
+   ```bash
+   python -m backtest.database
+   ```
+
+详细配置指南：[docs/ENV_SETUP.md](docs/ENV_SETUP.md)
+
+### 完整文档
+
+- **用户指南：** [docs/BACKTEST_GUIDE.md](docs/BACKTEST_GUIDE.md)
+  - 详细使用说明
+  - 指标解读
+  - 最佳实践
+  - API参考
+  - 故障排除
+
+- **环境配置：** [docs/ENV_SETUP.md](docs/ENV_SETUP.md)
+  - 数据库设置
+  - 环境变量
+  - 生产部署
+
+### 技术架构
+
+**后端技术栈：**
+- SQLAlchemy ORM - 数据库管理
+- Flask-SocketIO - 实时通信
+- Binance API - 历史数据获取
+- 多线程执行 - 后台回测运行
+
+**前端技术栈：**
+- TradingView Charts - K线图和资金曲线
+- Socket.IO - 实时进度更新
+- 响应式设计 - 移动端友好
+
+**数据库模型：**
+- `backtest_runs` - 回测运行记录
+- `backtest_results` - 性能指标汇总
+- `backtest_trades` - 交易明细
+- `price_data_cache` - 价格数据缓存
 
 ---
 

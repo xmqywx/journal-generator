@@ -1,0 +1,83 @@
+# Environment variables
+.env
+.env.local
+*.env
+quant_v3/live/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+
+# Backtest cache
+quant_v3/live/backtest/cache/
+cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Node (for frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Data files
+*.csv
+*.parquet
+data/backtest_results/
+data/raw/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Trading
+live_trading_log.json
