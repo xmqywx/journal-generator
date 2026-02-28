@@ -344,14 +344,18 @@ function updateRiskCard(data) {
 
     // 清空并重新填充
     riskAlertsDiv.innerHTML = data.risk_alerts.map(alert => {
-        const severityColor = alert.severity === 'high' ? 'text-red-400'
-            : alert.severity === 'medium' ? 'text-yellow-400'
+        // 修复：使用level而不是severity (API返回的字段名)
+        const level = alert.level || 'info';
+        const severityColor = level === 'critical' ? 'text-red-400'
+            : level === 'warning' ? 'text-yellow-400'
             : 'text-blue-400';
+
+        // 修复：移除alert.type显示，因为API不返回该字段
+        const icon = level === 'critical' ? '🚨' : level === 'warning' ? '⚠️' : 'ℹ️';
 
         return `
             <div class="bg-gray-800 rounded p-3 ${severityColor}">
-                <div class="font-bold">${alert.type}</div>
-                <div class="text-sm">${alert.message}</div>
+                <div class="text-sm">${icon} ${alert.message || ''}</div>
             </div>
         `;
     }).join('');
