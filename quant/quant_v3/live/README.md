@@ -1,6 +1,30 @@
 # v3实盘交易系统
 
-## 快速开始
+## 🎨 Web UI（推荐）
+
+### 一键启动
+
+```bash
+cd /Users/ying/Documents/Kris/quant/quant_v3/live
+./start.sh
+```
+
+然后在浏览器打开：**http://localhost:5000**
+
+**特点：**
+- ✅ 现代化仪表板界面
+- ✅ 实时市场分析可视化
+- ✅ 一键确认交易
+- ✅ 完整历史记录
+- ✅ 移动端友好
+
+详细说明请查看：[WEB_UI_GUIDE.md](WEB_UI_GUIDE.md)
+
+---
+
+## 📟 命令行模式
+
+### 快速开始
 
 ### 1. 首次运行
 
