@@ -1,0 +1,18 @@
+{
+  "initial_capital": 2000.0,
+  "leverage": 1.0,
+  "fee_rate": 0.0004,
+  "strategy_params": {
+    "buy_threshold": 7.5,
+    "sell_threshold": 4.0,
+    "deceleration_filter": -2.0,
+    "drawdown_filter": -2.0,
+    "periods": {
+      "short": 30,
+      "medium": 90,
+      "long": 150,
+      "super_long": 180
+    }
+  },
+  "last_updated": "2026-02-28T10:00:00"
+}

@@ -25,23 +25,37 @@ class LiveTrader:
 
     def __init__(
         self,
-        initial_capital: float = 2000.0,
-        leverage: float = 1.0,
-        fee_rate: float = 0.0004,
+        config_file: str = "config.json",
         log_file: str = "live_trading_log.json"
     ):
         """
         Args:
-            initial_capital: 初始资金（USDT）
-            leverage: 杠杆倍数（建议1x）
-            fee_rate: 手续费率（Binance默认0.04%）
+            config_file: 配置文件路径
             log_file: 日志文件路径
         """
-        self.initial_capital = initial_capital
-        self.capital = initial_capital
-        self.leverage = leverage
-        self.fee_rate = fee_rate
+        self.config_file = config_file
         self.log_file = log_file
+
+        # 加载配置
+        self.config = self._load_config()
+
+        # 从配置中提取参数
+        self.initial_capital = self.config['initial_capital']
+        self.capital = self.initial_capital
+        self.leverage = self.config['leverage']
+        self.fee_rate = self.config['fee_rate']
+
+        # 策略参数（只读）
+        self.buy_threshold = self.config['strategy_params']['buy_threshold']
+        self.sell_threshold = self.config['strategy_params']['sell_threshold']
+        self.deceleration_filter = self.config['strategy_params']['deceleration_filter']
+        self.drawdown_filter = self.config['strategy_params']['drawdown_filter']
+
+        periods = self.config['strategy_params']['periods']
+        self.short_period = periods['short']
+        self.medium_period = periods['medium']
+        self.long_period = periods['long']
+        self.super_long_period = periods['super_long']
 
         # 持仓状态
         self.position = 0  # 0=空仓, 1=持仓
@@ -51,10 +65,10 @@ class LiveTrader:
 
         # 创建检测器
         self.detector = MarketDetectorV2(
-            short_period=30,
-            medium_period=90,
-            long_period=150,
-            super_long_period=180,
+            short_period=self.short_period,
+            medium_period=self.medium_period,
+            long_period=self.long_period,
+            super_long_period=self.super_long_period,
         )
 
         # 数据获取器
@@ -62,6 +76,120 @@ class LiveTrader:
 
         # 加载历史日志
         self.load_state()
+
+    def _load_config(self):
+        """加载配置文件"""
+        # 如果配置文件存在，加载它
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                print(f"✅ 已加载配置: {self.config_file}")
+                return config
+            except Exception as e:
+                print(f"⚠️  配置文件损坏，使用默认配置: {e}")
+
+        # 否则创建默认配置
+        default_config = {
+            "initial_capital": 2000.0,
+            "leverage": 1.0,
+            "fee_rate": 0.0004,
+            "strategy_params": {
+                "buy_threshold": 7.5,
+                "sell_threshold": 4.0,
+                "deceleration_filter": -2.0,
+                "drawdown_filter": -2.0,
+                "periods": {
+                    "short": 30,
+                    "medium": 90,
+                    "long": 150,
+                    "super_long": 180
+                }
+            },
+            "last_updated": datetime.now().isoformat()
+        }
+
+        # 保存默认配置
+        with open(self.config_file, 'w') as f:
+            json.dump(default_config, f, indent=2, ensure_ascii=False)
+
+        print(f"✅ 已创建默认配置: {self.config_file}")
+        return default_config
+
+    def update_config(self, initial_capital=None, leverage=None, fee_rate=None):
+        """更新配置（仅允许修改交易参数）
+
+        Args:
+            initial_capital: 初始资金 (100-100000 USDT)
+            leverage: 杠杆倍数 (1.0-3.0)
+            fee_rate: 手续费率 (0.0002-0.001)
+
+        Returns:
+            bool: 更新成功返回True，失败返回False
+        """
+        # 验证参数范围
+        if initial_capital is not None:
+            if not (100 <= initial_capital <= 100000):
+                print(f"❌ 初始资金必须在100-100000之间，当前: {initial_capital}")
+                return False
+
+        if leverage is not None:
+            if not (1.0 <= leverage <= 3.0):
+                print(f"❌ 杠杆倍数必须在1.0-3.0之间，当前: {leverage}")
+                return False
+
+        if fee_rate is not None:
+            if not (0.0002 <= fee_rate <= 0.001):
+                print(f"❌ 手续费率必须在0.0002-0.001之间，当前: {fee_rate}")
+                return False
+
+        # 更新配置
+        if initial_capital is not None:
+            # 防止在持仓时修改初始资金
+            if self.position == 1:
+                print(f"❌ 无法在持仓时修改初始资金")
+                return False
+
+            # 警告：如果当前资金与初始资金不同（有盈亏）
+            if self.capital != self.initial_capital:
+                print(
+                    f"⚠️ 当前资金({self.capital:.2f})与初始资金({self.initial_capital:.2f})不同，"
+                    f"请先记录盈亏后再修改初始资金"
+                )
+                return False
+
+            self.config['initial_capital'] = initial_capital
+        if leverage is not None:
+            self.config['leverage'] = leverage
+        if fee_rate is not None:
+            self.config['fee_rate'] = fee_rate
+
+        self.config['last_updated'] = datetime.now().isoformat()
+
+        # 保存到文件
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(self.config, f, indent=2, ensure_ascii=False)
+
+            # 重新加载实例变量
+            if initial_capital is not None:
+                self.initial_capital = initial_capital
+                self.capital = initial_capital
+            if leverage is not None:
+                self.leverage = leverage
+            if fee_rate is not None:
+                self.fee_rate = fee_rate
+
+            print(f"✅ 配置已更新")
+            return True
+
+        except Exception as e:
+            print(f"❌ 保存配置失败: {e}")
+            return False
+
+    def get_config(self):
+        """获取当前配置（返回副本）"""
+        return self.config.copy()
 
     def load_state(self):
         """加载历史状态"""
@@ -184,18 +312,18 @@ class LiveTrader:
     def _generate_signal(self, score, decel, drawdown):
         """生成交易信号
 
-        买入条件：评分>7.5 AND 减速>-2.0 AND 回撤>-2.0
-        卖出条件：评分<4.0
+        买入条件：评分>buy_threshold AND 减速>deceleration_filter AND 回撤>drawdown_filter
+        卖出条件：评分<sell_threshold
         """
         if self.current_state == 'BULL':
             # 持仓中，检查卖出信号
-            if score < 4.0:
+            if score < self.sell_threshold:
                 return 'SELL'
             else:
                 return 'HOLD'
         else:
             # 空仓中，检查买入信号
-            if score > 7.5 and decel > -2.0 and drawdown > -2.0:
+            if score > self.buy_threshold and decel > self.deceleration_filter and drawdown > self.drawdown_filter:
                 return 'BUY'
             else:
                 return 'WAIT'
@@ -229,14 +357,14 @@ class LiveTrader:
             print(f"  净成本: {net_capital:,.2f} USDT")
 
             print(f"\n理由:")
-            print(f"  ✅ 综合评分 {details['comprehensive_score']:.2f} > 7.5 (强牛市)")
-            print(f"  ✅ 减速扣分 {details['deceleration_penalty']:.2f} > -2.0 (趋势健康)")
-            print(f"  ✅ 回撤扣分 {details['drawdown_penalty']:.2f} > -2.0 (价格不高)")
+            print(f"  ✅ 综合评分 {details['comprehensive_score']:.2f} > {self.buy_threshold} (强牛市)")
+            print(f"  ✅ 减速扣分 {details['deceleration_penalty']:.2f} > {self.deceleration_filter} (趋势健康)")
+            print(f"  ✅ 回撤扣分 {details['drawdown_penalty']:.2f} > {self.drawdown_filter} (价格不高)")
 
             print(f"\n⚠️  风险提示:")
             print(f"  - 加密货币波动大，可能快速下跌")
             print(f"  - 杠杆{self.leverage}x会放大盈亏")
-            print(f"  - 建议设置止损：如评分降到<4.0立即卖出")
+            print(f"  - 建议设置止损：如评分降到<{self.sell_threshold}立即卖出")
 
             recommendation['action'] = 'BUY'
             recommendation['amount'] = self.capital
@@ -264,7 +392,7 @@ class LiveTrader:
             print(f"  累计收益率: {total_return*100:+.2f}%")
 
             print(f"\n理由:")
-            print(f"  ⚠️  综合评分 {details['comprehensive_score']:.2f} < 4.0 (进入熊市/深度震荡)")
+            print(f"  ⚠️  综合评分 {details['comprehensive_score']:.2f} < {self.sell_threshold} (进入熊市/深度震荡)")
 
             if pnl > 0:
                 print(f"\n✅ 当前盈利，建议止盈")
@@ -286,7 +414,7 @@ class LiveTrader:
             print(f"  持仓{(datetime.now() - datetime.fromisoformat(self.entry_date)).days}天")
 
             print(f"\n理由:")
-            print(f"  ✅ 综合评分 {details['comprehensive_score']:.2f} 仍高于4.0")
+            print(f"  ✅ 综合评分 {details['comprehensive_score']:.2f} 仍高于{self.sell_threshold}")
             print(f"  ✅ 牛市趋势未结束")
 
             recommendation['action'] = 'HOLD'
@@ -298,12 +426,12 @@ class LiveTrader:
             print(f"\n理由:")
 
             reasons = []
-            if details['comprehensive_score'] <= 7.5:
-                reasons.append(f"  ⚠️  评分 {details['comprehensive_score']:.2f} ≤ 7.5 (不够强)")
-            if details['deceleration_penalty'] <= -2.0:
-                reasons.append(f"  ⚠️  减速扣分 {details['deceleration_penalty']:.2f} ≤ -2.0 (趋势放缓)")
-            if details['drawdown_penalty'] <= -2.0:
-                reasons.append(f"  ⚠️  回撤扣分 {details['drawdown_penalty']:.2f} ≤ -2.0 (从高位回撤)")
+            if details['comprehensive_score'] <= self.buy_threshold:
+                reasons.append(f"  ⚠️  评分 {details['comprehensive_score']:.2f} ≤ {self.buy_threshold} (不够强)")
+            if details['deceleration_penalty'] <= self.deceleration_filter:
+                reasons.append(f"  ⚠️  减速扣分 {details['deceleration_penalty']:.2f} ≤ {self.deceleration_filter} (趋势放缓)")
+            if details['drawdown_penalty'] <= self.drawdown_filter:
+                reasons.append(f"  ⚠️  回撤扣分 {details['drawdown_penalty']:.2f} ≤ {self.drawdown_filter} (从高位回撤)")
 
             for reason in reasons:
                 print(reason)
@@ -500,12 +628,8 @@ def main():
     print("v3量化系统 - 实盘交易器")
     print("="*80)
 
-    # 创建交易器
-    trader = LiveTrader(
-        initial_capital=2000.0,  # 初始资金
-        leverage=1.0,            # 1x杠杆（无杠杆）
-        fee_rate=0.0004,         # Binance手续费0.04%
-    )
+    # 创建交易器（使用默认config.json）
+    trader = LiveTrader()
 
     # 每日检查
     recommendation = trader.daily_check()
