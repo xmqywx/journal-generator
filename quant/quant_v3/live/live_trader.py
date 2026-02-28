@@ -688,6 +688,92 @@ class LiveTrader:
             'trades': sell_trades
         }
 
+    def get_chart_data(self):
+        """获取图表数据（用于前端图表）
+
+        Returns:
+            dict: {
+                'price_history': [...],  # 价格历史（180天，每日数据）
+                'score_history': [...],  # 评分历史（90天）
+                'multi_period_trends': {...},  # 多周期趋势（30/90/150/180天）
+                'trade_markers': [...]   # 买卖点标记
+            }
+        """
+        # 1. 获取价格历史（180天，每小时数据 -> 每日数据）
+        df = self.fetcher.fetch_history('BTC-USDT', '1h', days=200)
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+        # 转换为每日数据（取每天的OHLC）
+        df['date'] = df['datetime'].dt.date
+        daily_df = df.groupby('date').agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum'
+        }).reset_index()
+
+        # 保留最近180天
+        daily_df = daily_df.tail(180)
+
+        price_history = []
+        for _, row in daily_df.iterrows():
+            price_history.append({
+                'date': str(row['date']),
+                'open': round(float(row['open']), 2),
+                'high': round(float(row['high']), 2),
+                'low': round(float(row['low']), 2),
+                'close': round(float(row['close']), 2),
+                'volume': round(float(row['volume']), 2)
+            })
+
+        # 2. 获取评分历史（90天）
+        score_history = self.get_score_history(days=90)
+
+        # 3. 计算当前多周期趋势
+        details = self.detector.get_detection_details(df, -1)
+        multi_period_trends = {
+            '30d': round(float(details['trend_30d']) * 100, 2),    # 转为百分比
+            '90d': round(float(details['trend_90d']) * 100, 2),
+            '150d': round(float(details['trend_180d']) * 100, 2),
+            '180d': round(float(details['trend_365d']) * 100, 2)
+        }
+
+        # 4. 获取买卖点标记（从交易日志）
+        trade_markers = []
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, 'r') as f:
+                    logs = json.load(f)
+                trades = logs.get('trades', [])
+
+                for trade in trades:
+                    if trade['type'] == 'BUY':
+                        # 买入点
+                        trade_markers.append({
+                            'date': trade['timestamp'].split('T')[0],  # 取日期部分
+                            'price': round(float(trade['price']), 2),
+                            'type': 'BUY'
+                        })
+                    elif trade['type'] == 'SELL':
+                        # 卖出点
+                        trade_markers.append({
+                            'date': trade['exit_date'].split('T')[0],
+                            'price': round(float(trade['exit_price']), 2),
+                            'type': 'SELL',
+                            'pnl': round(float(trade.get('pnl', 0)), 2),
+                            'return': round(float(trade.get('return', 0)) * 100, 2)  # 转为百分比
+                        })
+            except Exception as e:
+                print(f"⚠️  读取交易标记失败: {e}")
+
+        return {
+            'price_history': price_history,
+            'score_history': score_history,
+            'multi_period_trends': multi_period_trends,
+            'trade_markers': trade_markers
+        }
+
 
 def main():
     """主程序 - 每日检查"""

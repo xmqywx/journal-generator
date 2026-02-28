@@ -85,6 +85,16 @@ def get_history():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/chart_data')
+def get_chart_data():
+    """获取图表数据"""
+    try:
+        chart_data = trader.get_chart_data()
+        return jsonify(chart_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     # 创建templates目录
     os.makedirs('templates', exist_ok=True)
@@ -94,7 +104,7 @@ if __name__ == '__main__':
     print("v3量化系统 - Web界面")
     print("="*80)
     print("\n正在启动Web服务器...")
-    print("\n访问地址: http://localhost:5000")
+    print("\n访问地址: http://localhost:5001")
     print("\n按 Ctrl+C 停止服务器\n")
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
