@@ -26,17 +26,32 @@ let periodChart = null;
  * 格式化数字
  */
 function formatNumber(num, decimals = 2) {
-    if (num === null || num === undefined) return '0.00';
-    return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    if (num === null || num === undefined || isNaN(num)) return '0.00';
+    return parseFloat(num).toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /**
  * 格式化百分比
  */
 function formatPercent(num) {
-    if (num === null || num === undefined) return '0.00%';
+    if (num === null || num === undefined || isNaN(num)) return '0.00%';
     const sign = num >= 0 ? '+' : '';
-    return sign + (num * 100).toFixed(2) + '%';
+    return sign + (parseFloat(num) * 100).toFixed(2) + '%';
+}
+
+/**
+ * 安全获取嵌套属性
+ */
+function safeGet(obj, path, defaultValue = null) {
+    const keys = path.split('.');
+    let result = obj;
+    for (const key of keys) {
+        if (result == null || typeof result !== 'object') {
+            return defaultValue;
+        }
+        result = result[key];
+    }
+    return result !== undefined ? result : defaultValue;
 }
 
 /**
@@ -100,7 +115,8 @@ function updateStatusBar(data) {
     document.getElementById('last-update').textContent = now.toLocaleTimeString('zh-CN');
 
     // 更新账户信息
-    document.getElementById('capital').textContent = '$ ' + formatNumber(data.capital);
+    const capital = parseFloat(data.capital) || 0;
+    document.getElementById('capital').textContent = '$ ' + formatNumber(capital);
 
     // 更新持仓状态
     if (data.position) {
@@ -109,23 +125,27 @@ function updateStatusBar(data) {
 
         // 计算未实现盈亏
         const rec = data.recommendation;
-        if (rec && rec.details) {
-            const currentPrice = rec.details.current_price;
-            const entryPrice = data.entry_price;
+        if (rec && rec.details && rec.details.current_price && data.entry_price) {
+            const currentPrice = parseFloat(rec.details.current_price) || 0;
+            const entryPrice = parseFloat(data.entry_price) || 1;  // 避免除以0
             const unrealizedPnlPct = (currentPrice / entryPrice - 1);
-            const unrealizedPnl = data.capital * unrealizedPnlPct;
+            const unrealizedPnl = capital * unrealizedPnlPct;
 
-            const totalValue = data.capital + unrealizedPnl;
+            const totalValue = capital + unrealizedPnl;
             document.getElementById('total-value').textContent = '$ ' + formatNumber(totalValue);
             document.getElementById('unrealized-pnl').textContent = '$ ' + formatNumber(unrealizedPnl);
             document.getElementById('unrealized-pnl').className = unrealizedPnl >= 0
                 ? 'text-2xl font-bold text-green-400'
                 : 'text-2xl font-bold text-red-400';
+        } else {
+            document.getElementById('total-value').textContent = '$ ' + formatNumber(capital);
+            document.getElementById('unrealized-pnl').textContent = '$ 0.00';
+            document.getElementById('unrealized-pnl').className = 'text-2xl font-bold text-gray-400';
         }
     } else {
         document.getElementById('position-status').textContent = '空仓';
         document.getElementById('position-status').className = 'text-2xl font-bold text-gray-400';
-        document.getElementById('total-value').textContent = '$ ' + formatNumber(data.capital);
+        document.getElementById('total-value').textContent = '$ ' + formatNumber(capital);
         document.getElementById('unrealized-pnl').textContent = '$ 0.00';
         document.getElementById('unrealized-pnl').className = 'text-2xl font-bold text-gray-400';
     }
@@ -150,29 +170,35 @@ function updateStatusBar(data) {
     if (data.recommendation && data.recommendation.details) {
         const details = data.recommendation.details;
 
-        document.getElementById('btc-price').textContent = '$' + formatNumber(details.current_price);
-        document.getElementById('score-value').textContent = details.comprehensive_score.toFixed(1);
-        document.getElementById('score-bar').style.width = (details.comprehensive_score * 10) + '%';
+        const currentPrice = parseFloat(details.current_price) || 0;
+        const score = parseFloat(details.comprehensive_score) || 0;
+
+        document.getElementById('btc-price').textContent = '$' + formatNumber(currentPrice);
+        document.getElementById('score-value').textContent = score.toFixed(1);
+        document.getElementById('score-bar').style.width = (score * 10) + '%';
 
         // 趋势强度
         const strengthElement = document.getElementById('trend-strength');
         strengthElement.textContent = details.trend_strength || 'RANGING';
         strengthElement.className = 'inline-block px-4 py-2 rounded-lg font-bold ' + getTrendColor(details.trend_strength);
 
-        // 各周期趋势
-        updateTrend('trend-180', details.trend_365d);
-        updateTrend('trend-150', details.trend_180d);
-        updateTrend('trend-90', details.trend_90d);
-        updateTrend('trend-30', details.trend_30d);
+        // 各周期趋势 (使用安全访问)
+        updateTrend('trend-180', safeGet(details, 'trend_365d', 0));
+        updateTrend('trend-150', safeGet(details, 'trend_180d', 0));
+        updateTrend('trend-90', safeGet(details, 'trend_90d', 0));
+        updateTrend('trend-30', safeGet(details, 'trend_30d', 0));
 
         // 减速和回撤
-        document.getElementById('decel').textContent = details.deceleration_penalty.toFixed(2);
-        document.getElementById('decel').className = details.deceleration_penalty > -2.0
+        const decel = parseFloat(details.deceleration_penalty) || 0;
+        const drawdown = parseFloat(details.drawdown_90d) || 0;
+
+        document.getElementById('decel').textContent = decel.toFixed(2);
+        document.getElementById('decel').className = decel > -2.0
             ? 'text-lg font-bold text-green-400'
             : 'text-lg font-bold text-red-400';
 
-        document.getElementById('drawdown').textContent = formatPercent(details.drawdown_90d);
-        document.getElementById('drawdown').className = details.drawdown_90d > -0.1
+        document.getElementById('drawdown').textContent = formatPercent(drawdown);
+        document.getElementById('drawdown').className = drawdown > -0.1
             ? 'text-lg font-bold text-green-400'
             : 'text-lg font-bold text-red-400';
     }
@@ -217,12 +243,16 @@ function updateSignalCard(data) {
         iconText = '🟢';
         badge.textContent = '买入';
 
+        const score = parseFloat(rec.details?.comprehensive_score) || 0;
+        const decel = parseFloat(rec.details?.deceleration_penalty) || 0;
+        const drawdownPenalty = parseFloat(rec.details?.drawdown_penalty) || 0;
+
         detailsHTML = `
             <div class="font-bold text-lg mb-2">✅ 建议买入 BTC</div>
             <div class="space-y-1 mb-3">
-                <div>• 综合评分 ${rec.details.comprehensive_score.toFixed(2)} > 7.5 (强牛市)</div>
-                <div>• 减速扣分 ${rec.details.deceleration_penalty.toFixed(2)} > -2.0 (趋势健康)</div>
-                <div>• 回撤扣分 ${rec.details.drawdown_penalty.toFixed(2)} > -2.0 (价格不高)</div>
+                <div>• 综合评分 ${score.toFixed(2)} > 7.5 (强牛市)</div>
+                <div>• 减速扣分 ${decel.toFixed(2)} > -2.0 (趋势健康)</div>
+                <div>• 回撤扣分 ${drawdownPenalty.toFixed(2)} > -2.0 (价格不高)</div>
             </div>
             <div class="text-yellow-400 text-xs">
                 ⚠️ 风险提示：加密货币波动大，可能快速下跌
@@ -238,13 +268,14 @@ function updateSignalCard(data) {
         iconText = '🔴';
         badge.textContent = '卖出';
 
-        const pnl = rec.expected_pnl || 0;
-        const pnlPercent = ((rec.expected_return || 0) * 100).toFixed(2);
+        const pnl = parseFloat(rec.expected_pnl) || 0;
+        const pnlPercent = ((parseFloat(rec.expected_return) || 0) * 100).toFixed(2);
+        const score = parseFloat(rec.details?.comprehensive_score) || 0;
 
         detailsHTML = `
             <div class="font-bold text-lg mb-2">⚠️ 建议卖出 BTC</div>
             <div class="space-y-1 mb-3">
-                <div>• 综合评分 ${rec.details.comprehensive_score.toFixed(2)} < 4.0 (熊市)</div>
+                <div>• 综合评分 ${score.toFixed(2)} < 4.0 (熊市)</div>
                 <div>• 预期盈亏: ${pnl >= 0 ? '+' : ''}${formatNumber(pnl)} USDT (${pnlPercent}%)</div>
             </div>
             <div class="text-xs ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}">
@@ -261,12 +292,13 @@ function updateSignalCard(data) {
         iconText = '🟡';
         badge.textContent = '持有';
 
-        const unrealizedPnl = rec.unrealized_pnl || 0;
+        const unrealizedPnl = parseFloat(rec.unrealized_pnl) || 0;
+        const score = parseFloat(rec.details?.comprehensive_score) || 0;
 
         detailsHTML = `
             <div class="font-bold text-lg mb-2">🟡 继续持有</div>
             <div class="space-y-1">
-                <div>• 综合评分 ${rec.details.comprehensive_score.toFixed(2)} 仍高于 4.0</div>
+                <div>• 综合评分 ${score.toFixed(2)} 仍高于 4.0</div>
                 <div>• 未实现盈亏: ${unrealizedPnl >= 0 ? '+' : ''}${formatNumber(unrealizedPnl)} USDT</div>
                 <div>• 牛市趋势未结束</div>
             </div>
@@ -366,13 +398,19 @@ function renderPriceChart(priceHistory) {
     const ctx = document.getElementById('price-chart');
     if (!ctx) return;
 
+    // 检查数据有效性
+    if (!priceHistory || !Array.isArray(priceHistory) || priceHistory.length === 0) {
+        console.warn('Price history data is empty or invalid');
+        return;
+    }
+
     // 销毁旧图表
     if (priceChart) {
         priceChart.destroy();
     }
 
-    const dates = priceHistory.map(item => item.date || item.timestamp);
-    const prices = priceHistory.map(item => item.price || item.close);
+    const dates = priceHistory.map(item => item.date || item.timestamp || 'N/A');
+    const prices = priceHistory.map(item => parseFloat(item.price || item.close) || 0);
 
     priceChart = new Chart(ctx, {
         type: 'line',
@@ -435,13 +473,19 @@ function renderScoreChart(scoreHistory) {
     const ctx = document.getElementById('score-chart');
     if (!ctx) return;
 
+    // 检查数据有效性
+    if (!scoreHistory || !Array.isArray(scoreHistory) || scoreHistory.length === 0) {
+        console.warn('Score history data is empty or invalid');
+        return;
+    }
+
     // 销毁旧图表
     if (scoreChart) {
         scoreChart.destroy();
     }
 
-    const dates = scoreHistory.map(item => item.date || item.timestamp);
-    const scores = scoreHistory.map(item => item.score);
+    const dates = scoreHistory.map(item => item.date || item.timestamp || 'N/A');
+    const scores = scoreHistory.map(item => parseFloat(item.score) || 0);
 
     scoreChart = new Chart(ctx, {
         type: 'line',
@@ -496,13 +540,19 @@ function renderPeriodChart(periodTrends) {
     const ctx = document.getElementById('period-chart');
     if (!ctx) return;
 
+    // 检查数据有效性
+    if (!periodTrends || typeof periodTrends !== 'object' || Object.keys(periodTrends).length === 0) {
+        console.warn('Period trends data is empty or invalid');
+        return;
+    }
+
     // 销毁旧图表
     if (periodChart) {
         periodChart.destroy();
     }
 
     const labels = Object.keys(periodTrends);
-    const values = Object.values(periodTrends).map(v => v * 100); // 转换为百分比
+    const values = Object.values(periodTrends).map(v => parseFloat(v) || 0); // 已经是百分比格式
 
     periodChart = new Chart(ctx, {
         type: 'bar',
@@ -599,14 +649,19 @@ function updateConfig(data) {
     fetch('/api/config')
         .then(res => res.json())
         .then(config => {
-            document.getElementById('config-capital').textContent = '$' + formatNumber(config.initial_capital);
-            document.getElementById('config-leverage').textContent = config.leverage.toFixed(1) + 'x';
-            document.getElementById('config-fee').textContent = (config.fee_rate * 100).toFixed(2) + '%';
+            const capital = parseFloat(config.initial_capital) || 0;
+            const leverage = parseFloat(config.leverage) || 1.0;
+            const feeRate = parseFloat(config.fee_rate) || 0.0004;
+
+            document.getElementById('config-capital').textContent = '$' + formatNumber(capital);
+            document.getElementById('config-leverage').textContent = leverage.toFixed(1) + 'x';
+            document.getElementById('config-fee').textContent = (feeRate * 100).toFixed(2) + '%';
         })
         .catch(err => {
             console.warn('Config API not available:', err);
             // 使用默认值
-            document.getElementById('config-capital').textContent = '$' + formatNumber(data.capital || 0);
+            const capital = parseFloat(data.capital) || 0;
+            document.getElementById('config-capital').textContent = '$' + formatNumber(capital);
             document.getElementById('config-leverage').textContent = '1.0x';
             document.getElementById('config-fee').textContent = '0.04%';
         });
