@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v3量化交易系统</title>
+    <title>v3量化交易系统 - 增强仪表板</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -17,6 +17,49 @@
         }
         .pulse-green { animation: pulse-green 2s ease-in-out infinite; }
         .pulse-red { animation: pulse-red 2s ease-in-out infinite; }
+
+        /* Chart container styling */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+
+        /* Modal styling */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.7);
+        }
+        .modal.active {
+            display: block;
+        }
+        .modal-content {
+            background-color: #1f2937;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            color: #f3f4f6;
+        }
+        .close {
+            color: #9ca3af;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #f3f4f6;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
@@ -30,12 +73,15 @@
                     </div>
                     <div>
                         <h1 class="text-2xl font-bold">v3量化交易系统</h1>
-                        <p class="text-sm text-gray-400">实盘交易 · 半自动模式</p>
+                        <p class="text-sm text-gray-400">实盘交易 · 半自动模式 · 增强版</p>
                     </div>
                 </div>
                 <div class="text-right">
                     <div class="text-sm text-gray-400">最后更新</div>
                     <div id="last-update" class="text-lg font-mono">--:--:--</div>
+                    <button id="refresh-btn" class="mt-2 px-4 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-all">
+                        手动刷新
+                    </button>
                 </div>
             </div>
         </div>
@@ -47,12 +93,12 @@
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div>
                     <div class="text-sm text-gray-400 mb-1">账户总值</div>
-                    <div id="total-value" class="text-3xl font-bold">¥ 0.00</div>
+                    <div id="total-value" class="text-3xl font-bold">$ 0.00</div>
                     <div id="total-return" class="text-sm mt-1">+0.00%</div>
                 </div>
                 <div>
                     <div class="text-sm text-gray-400 mb-1">可用资金</div>
-                    <div id="capital" class="text-2xl font-bold">¥ 0.00</div>
+                    <div id="capital" class="text-2xl font-bold">$ 0.00</div>
                 </div>
                 <div>
                     <div class="text-sm text-gray-400 mb-1">持仓状态</div>
@@ -60,13 +106,13 @@
                 </div>
                 <div>
                     <div class="text-sm text-gray-400 mb-1">未实现盈亏</div>
-                    <div id="unrealized-pnl" class="text-2xl font-bold">¥ 0.00</div>
+                    <div id="unrealized-pnl" class="text-2xl font-bold">$ 0.00</div>
                 </div>
             </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- Market Analysis -->
+            <!-- Market Analysis with Chart -->
             <div class="bg-gray-800 rounded-lg shadow-lg p-6">
                 <h2 class="text-xl font-bold mb-4 flex items-center">
                     <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
@@ -88,6 +134,14 @@
                                 <div id="score-value" class="ml-3 text-lg font-bold">0.0</div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Price Chart -->
+                <div class="mb-4">
+                    <div class="text-sm text-gray-400 mb-2">价格走势 (30天)</div>
+                    <div class="chart-container">
+                        <canvas id="price-chart"></canvas>
                     </div>
                 </div>
 
@@ -147,6 +201,14 @@
                     <p class="text-gray-400">正在加载...</p>
                 </div>
 
+                <!-- Risk Alerts -->
+                <div id="risk-alerts-container" class="hidden mb-4">
+                    <h3 class="text-lg font-bold mb-2 text-yellow-400">⚠️ 风险警报</h3>
+                    <div id="risk-alerts" class="space-y-2">
+                        <!-- Risk alerts will be populated here -->
+                    </div>
+                </div>
+
                 <div id="action-button-container" class="hidden">
                     <button id="execute-button" class="w-full py-4 rounded-lg font-bold text-lg transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
                         执行交易
@@ -158,8 +220,33 @@
             </div>
         </div>
 
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <!-- Score History Chart -->
+            <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <span class="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                    综合评分历史
+                </h2>
+                <div class="chart-container">
+                    <canvas id="score-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Period Performance Chart -->
+            <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <span class="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                    各周期趋势对比
+                </h2>
+                <div class="chart-container">
+                    <canvas id="period-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
         <!-- Trade History -->
-        <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
             <h2 class="text-xl font-bold mb-4 flex items-center">
                 <span class="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
                 交易历史
@@ -175,11 +262,12 @@
                             <th class="text-right py-3 px-4">持仓天数</th>
                             <th class="text-right py-3 px-4">盈亏</th>
                             <th class="text-right py-3 px-4">收益率</th>
+                            <th class="text-center py-3 px-4">详情</th>
                         </tr>
                     </thead>
                     <tbody id="trade-history">
                         <tr>
-                            <td colspan="7" class="text-center py-8 text-gray-400">
+                            <td colspan="8" class="text-center py-8 text-gray-400">
                                 暂无交易记录
                             </td>
                         </tr>
@@ -189,7 +277,7 @@
         </div>
 
         <!-- Performance Stats -->
-        <div class="bg-gray-800 rounded-lg shadow-lg p-6 mt-6">
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6">
             <h2 class="text-xl font-bold mb-4">表现统计</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
@@ -206,302 +294,47 @@
                 </div>
             </div>
         </div>
+
+        <!-- System Config (Collapsible) -->
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6 mt-6">
+            <h2 class="text-xl font-bold mb-4 cursor-pointer" onclick="toggleConfig()">
+                系统配置
+                <span id="config-toggle" class="text-sm">▼</span>
+            </h2>
+            <div id="config-panel" class="hidden">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <div class="text-sm text-gray-400 mb-1">初始资金</div>
+                        <div id="config-capital" class="text-xl font-bold">$0.00</div>
+                    </div>
+                    <div>
+                        <div class="text-sm text-gray-400 mb-1">杠杆倍数</div>
+                        <div id="config-leverage" class="text-xl font-bold">1.0x</div>
+                    </div>
+                    <div>
+                        <div class="text-sm text-gray-400 mb-1">手续费率</div>
+                        <div id="config-fee" class="text-xl font-bold">0.04%</div>
+                    </div>
+                </div>
+                <div class="text-xs text-gray-500 mt-4">
+                    注意: 配置修改功能已预留API接口，可在后续版本中开放前端编辑功能
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script>
-        let currentRecommendation = null;
+    <!-- Trade Detail Modal -->
+    <div id="trade-detail-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeTradeDetailModal()">&times;</span>
+            <h2 class="text-2xl font-bold mb-4">交易详情</h2>
+            <div id="trade-detail-content">
+                <!-- Content will be populated dynamically -->
+            </div>
+        </div>
+    </div>
 
-        // 格式化数字
-        function formatNumber(num, decimals = 2) {
-            return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-        }
-
-        // 格式化百分比
-        function formatPercent(num) {
-            const sign = num >= 0 ? '+' : '';
-            return sign + (num * 100).toFixed(2) + '%';
-        }
-
-        // 更新仪表板
-        async function updateDashboard() {
-            try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
-
-                console.log('Status data:', data);
-
-                // 更新时间
-                const now = new Date();
-                document.getElementById('last-update').textContent = now.toLocaleTimeString('zh-CN');
-
-                // 更新账户信息
-                document.getElementById('capital').textContent = '¥ ' + formatNumber(data.capital);
-
-                // 更新持仓状态
-                if (data.position) {
-                    document.getElementById('position-status').textContent = '持仓中';
-
-                    // 计算未实现盈亏
-                    const rec = data.recommendation;
-                    if (rec && rec.details) {
-                        const currentPrice = rec.details.current_price;
-                        const entryPrice = data.entry_price;
-                        const unrealizedPnlPct = (currentPrice / entryPrice - 1);
-                        const unrealizedPnl = data.capital * unrealizedPnlPct;
-
-                        const totalValue = data.capital + unrealizedPnl;
-                        document.getElementById('total-value').textContent = '¥ ' + formatNumber(totalValue);
-                        document.getElementById('unrealized-pnl').textContent = '¥ ' + formatNumber(unrealizedPnl);
-                        document.getElementById('unrealized-pnl').className = unrealizedPnl >= 0 ? 'text-2xl font-bold text-green-400' : 'text-2xl font-bold text-red-400';
-                    }
-                } else {
-                    document.getElementById('position-status').textContent = '空仓';
-                    document.getElementById('total-value').textContent = '¥ ' + formatNumber(data.capital);
-                    document.getElementById('unrealized-pnl').textContent = '¥ 0.00';
-                }
-
-                // 更新总收益
-                if (data.performance) {
-                    const totalReturn = data.performance.total_return;
-                    document.getElementById('total-return').textContent = formatPercent(totalReturn);
-                    document.getElementById('total-return').className = totalReturn >= 0 ? 'text-sm mt-1 text-green-400' : 'text-sm mt-1 text-red-400';
-
-                    document.getElementById('num-trades').textContent = data.performance.num_trades;
-                    document.getElementById('win-rate').textContent = (data.performance.win_rate * 100).toFixed(1) + '%';
-                    document.getElementById('cum-return').textContent = formatPercent(totalReturn);
-                    document.getElementById('cum-return').className = totalReturn >= 0 ? 'text-2xl font-bold text-green-400' : 'text-2xl font-bold text-red-400';
-                }
-
-                // 更新市场分析
-                if (data.recommendation && data.recommendation.details) {
-                    const details = data.recommendation.details;
-
-                    document.getElementById('btc-price').textContent = '$' + formatNumber(details.current_price);
-                    document.getElementById('score-value').textContent = details.comprehensive_score.toFixed(1);
-                    document.getElementById('score-bar').style.width = (details.comprehensive_score * 10) + '%';
-
-                    // 趋势强度
-                    const strengthElement = document.getElementById('trend-strength');
-                    strengthElement.textContent = details.trend_strength;
-                    strengthElement.className = 'inline-block px-4 py-2 rounded-lg font-bold ' + getTrendColor(details.trend_strength);
-
-                    // 各周期趋势
-                    updateTrend('trend-180', details.trend_365d);
-                    updateTrend('trend-150', details.trend_180d);
-                    updateTrend('trend-90', details.trend_90d);
-                    updateTrend('trend-30', details.trend_30d);
-
-                    // 减速和回撤
-                    document.getElementById('decel').textContent = details.deceleration_penalty.toFixed(2);
-                    document.getElementById('decel').className = details.deceleration_penalty > -2.0 ? 'text-lg font-bold text-green-400' : 'text-lg font-bold text-red-400';
-
-                    document.getElementById('drawdown').textContent = formatPercent(details.drawdown_90d);
-                    document.getElementById('drawdown').className = details.drawdown_90d > -0.1 ? 'text-lg font-bold text-green-400' : 'text-lg font-bold text-red-400';
-                }
-
-                // 更新交易信号
-                if (data.recommendation) {
-                    currentRecommendation = data.recommendation;
-                    updateSignal(data.recommendation);
-                }
-
-                // 更新交易历史
-                if (data.performance && data.performance.trades) {
-                    updateTradeHistory(data.performance.trades);
-                }
-
-            } catch (error) {
-                console.error('Error updating dashboard:', error);
-            }
-        }
-
-        function getTrendColor(strength) {
-            if (strength.includes('STRONG_BULL')) return 'bg-green-600';
-            if (strength.includes('BULL')) return 'bg-green-500';
-            if (strength.includes('RANGING')) return 'bg-gray-500';
-            if (strength.includes('BEAR')) return 'bg-red-500';
-            if (strength.includes('STRONG_BEAR')) return 'bg-red-600';
-            return 'bg-gray-500';
-        }
-
-        function updateTrend(id, value) {
-            const element = document.getElementById(id);
-            element.textContent = formatPercent(value);
-            element.className = value >= 0 ? 'text-lg font-bold text-green-400' : 'text-lg font-bold text-red-400';
-        }
-
-        function updateSignal(rec) {
-            const action = rec.action;
-            const badge = document.getElementById('signal-badge');
-            const icon = document.getElementById('signal-icon');
-            const details = document.getElementById('signal-details');
-            const buttonContainer = document.getElementById('action-button-container');
-            const button = document.getElementById('execute-button');
-
-            // 更新信号徽章
-            let badgeClass = 'inline-block px-8 py-4 rounded-lg text-3xl font-bold mb-4 ';
-            let iconText = '';
-            let detailsHTML = '';
-
-            if (action === 'BUY') {
-                badgeClass += 'bg-green-600 pulse-green';
-                iconText = '🟢';
-                badge.textContent = '买入';
-
-                detailsHTML = `
-                    <div class="font-bold text-lg mb-2">✅ 建议买入 BTC</div>
-                    <div class="space-y-1 mb-3">
-                        <div>• 综合评分 ${rec.details.comprehensive_score.toFixed(2)} > 7.5 (强牛市)</div>
-                        <div>• 减速扣分 ${rec.details.deceleration_penalty.toFixed(2)} > -2.0 (趋势健康)</div>
-                        <div>• 回撤扣分 ${rec.details.drawdown_penalty.toFixed(2)} > -2.0 (价格不高)</div>
-                    </div>
-                    <div class="text-yellow-400 text-xs">
-                        ⚠️ 风险提示：加密货币波动大，可能快速下跌
-                    </div>
-                `;
-
-                buttonContainer.classList.remove('hidden');
-                button.className = 'w-full py-4 rounded-lg font-bold text-lg bg-green-600 hover:bg-green-700 transition-all';
-                button.textContent = '确认买入';
-
-            } else if (action === 'SELL') {
-                badgeClass += 'bg-red-600 pulse-red';
-                iconText = '🔴';
-                badge.textContent = '卖出';
-
-                const pnl = rec.expected_pnl || 0;
-                const pnlPercent = ((rec.expected_return || 0) * 100).toFixed(2);
-
-                detailsHTML = `
-                    <div class="font-bold text-lg mb-2">⚠️ 建议卖出 BTC</div>
-                    <div class="space-y-1 mb-3">
-                        <div>• 综合评分 ${rec.details.comprehensive_score.toFixed(2)} < 4.0 (熊市)</div>
-                        <div>• 预期盈亏: ${pnl >= 0 ? '+' : ''}${formatNumber(pnl)} USDT (${pnlPercent}%)</div>
-                    </div>
-                    <div class="text-xs ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}">
-                        ${pnl >= 0 ? '✅ 当前盈利，建议止盈' : '⚠️ 当前亏损，建议止损'}
-                    </div>
-                `;
-
-                buttonContainer.classList.remove('hidden');
-                button.className = 'w-full py-4 rounded-lg font-bold text-lg bg-red-600 hover:bg-red-700 transition-all';
-                button.textContent = '确认卖出';
-
-            } else if (action === 'HOLD') {
-                badgeClass += 'bg-yellow-600';
-                iconText = '🟡';
-                badge.textContent = '持有';
-
-                const unrealizedPnl = rec.unrealized_pnl || 0;
-
-                detailsHTML = `
-                    <div class="font-bold text-lg mb-2">🟡 继续持有</div>
-                    <div class="space-y-1">
-                        <div>• 综合评分 ${rec.details.comprehensive_score.toFixed(2)} 仍高于 4.0</div>
-                        <div>• 未实现盈亏: ${unrealizedPnl >= 0 ? '+' : ''}${formatNumber(unrealizedPnl)} USDT</div>
-                        <div>• 牛市趋势未结束</div>
-                    </div>
-                `;
-
-                buttonContainer.classList.add('hidden');
-
-            } else {  // WAIT
-                badgeClass += 'bg-gray-600';
-                iconText = '⚪';
-                badge.textContent = '观望';
-
-                detailsHTML = `
-                    <div class="font-bold text-lg mb-2">⚪ 继续观望</div>
-                    <div class="space-y-1">
-                        <div>• 买入条件未满足</div>
-                        <div>• 等待更明确的信号</div>
-                    </div>
-                `;
-
-                buttonContainer.classList.add('hidden');
-            }
-
-            badge.className = badgeClass;
-            icon.textContent = iconText;
-            details.innerHTML = detailsHTML;
-        }
-
-        function updateTradeHistory(trades) {
-            const tbody = document.getElementById('trade-history');
-
-            if (!trades || trades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">暂无交易记录</td></tr>';
-                return;
-            }
-
-            const rows = trades.map(trade => {
-                const pnl = trade.pnl || 0;
-                const returnPct = (trade.return || 0) * 100;
-                const pnlClass = pnl >= 0 ? 'text-green-400' : 'text-red-400';
-
-                return `
-                    <tr class="border-b border-gray-700 hover:bg-gray-700">
-                        <td class="py-3 px-4">${trade.exit_date ? trade.exit_date.split('T')[0] : '-'}</td>
-                        <td class="py-3 px-4">
-                            <span class="px-2 py-1 rounded text-xs font-bold ${pnl >= 0 ? 'bg-green-600' : 'bg-red-600'}">
-                                平仓
-                            </span>
-                        </td>
-                        <td class="text-right py-3 px-4">$${formatNumber(trade.entry_price || 0)}</td>
-                        <td class="text-right py-3 px-4">$${formatNumber(trade.exit_price || 0)}</td>
-                        <td class="text-right py-3 px-4">${trade.holding_days || 0}天</td>
-                        <td class="text-right py-3 px-4 ${pnlClass}">$${formatNumber(pnl)}</td>
-                        <td class="text-right py-3 px-4 ${pnlClass} font-bold">${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%</td>
-                    </tr>
-                `;
-            }).join('');
-
-            tbody.innerHTML = rows;
-        }
-
-        // 执行交易按钮
-        document.getElementById('execute-button').addEventListener('click', async function() {
-            if (!currentRecommendation) return;
-
-            const action = currentRecommendation.action;
-            const confirmed = confirm(`确认执行 ${action === 'BUY' ? '买入' : '卖出'} 操作？\n\n请确保已在Binance手动下单。`);
-
-            if (!confirmed) return;
-
-            const price = prompt(`请输入实际成交价格（当前价格: $${formatNumber(currentRecommendation.price)}）:`, currentRecommendation.price.toFixed(2));
-
-            if (!price) return;
-
-            try {
-                const response = await fetch('/api/execute_trade', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        action: action,
-                        price: parseFloat(price)
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    alert('✅ 交易已记录！');
-                    updateDashboard();
-                } else {
-                    alert('❌ 交易记录失败: ' + result.message);
-                }
-            } catch (error) {
-                alert('❌ 错误: ' + error.message);
-            }
-        });
-
-        // 初始加载
-        updateDashboard();
-
-        // 每30秒自动刷新
-        setInterval(updateDashboard, 30000);
-    </script>
+    <!-- Load external JavaScript -->
+    <script src="/static/app.js"></script>
 </body>
 </html>
