@@ -1,0 +1,541 @@
+"""
+v3量化系统 - 实盘交易器（半自动模式）
+"""
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
+
+from data.fetcher import BinanceFetcher
+from quant_v3.core.market_detector_v2 import MarketDetectorV2
+import pandas as pd
+from datetime import datetime
+import json
+
+
+class LiveTrader:
+    """实盘交易器 - 半自动模式
+
+    功能：
+    1. 每日检查市场状态
+    2. 生成交易建议
+    3. 记录决策日志
+    4. 等待人工确认
+    """
+
+    def __init__(
+        self,
+        initial_capital: float = 2000.0,
+        leverage: float = 1.0,
+        fee_rate: float = 0.0004,
+        log_file: str = "live_trading_log.json"
+    ):
+        """
+        Args:
+            initial_capital: 初始资金（USDT）
+            leverage: 杠杆倍数（建议1x）
+            fee_rate: 手续费率（Binance默认0.04%）
+            log_file: 日志文件路径
+        """
+        self.initial_capital = initial_capital
+        self.capital = initial_capital
+        self.leverage = leverage
+        self.fee_rate = fee_rate
+        self.log_file = log_file
+
+        # 持仓状态
+        self.position = 0  # 0=空仓, 1=持仓
+        self.entry_price = 0.0
+        self.entry_date = None
+        self.current_state = 'RANGING'
+
+        # 创建检测器
+        self.detector = MarketDetectorV2(
+            short_period=30,
+            medium_period=90,
+            long_period=150,
+            super_long_period=180,
+        )
+
+        # 数据获取器
+        self.fetcher = BinanceFetcher()
+
+        # 加载历史日志
+        self.load_state()
+
+    def load_state(self):
+        """加载历史状态"""
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, 'r') as f:
+                    data = json.load(f)
+                    if 'state' in data:
+                        state = data['state']
+                        self.capital = state.get('capital', self.initial_capital)
+                        self.position = state.get('position', 0)
+                        self.entry_price = state.get('entry_price', 0.0)
+                        self.entry_date = state.get('entry_date', None)
+                        self.current_state = state.get('current_state', 'RANGING')
+                        print(f"✅ 已加载历史状态")
+                        print(f"   当前资金: {self.capital:,.2f} USDT")
+                        print(f"   持仓状态: {'持仓' if self.position else '空仓'}")
+                        if self.position:
+                            print(f"   开仓价格: {self.entry_price:,.2f}")
+                            print(f"   开仓日期: {self.entry_date}")
+            except Exception as e:
+                print(f"⚠️  加载状态失败: {e}")
+
+    def save_state(self):
+        """保存当前状态"""
+        state = {
+            'capital': self.capital,
+            'position': self.position,
+            'entry_price': self.entry_price,
+            'entry_date': self.entry_date,
+            'current_state': self.current_state,
+            'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        # 加载现有日志
+        logs = {'trades': [], 'checks': []}
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, 'r') as f:
+                    logs = json.load(f)
+            except:
+                pass
+
+        logs['state'] = state
+
+        with open(self.log_file, 'w') as f:
+            json.dump(logs, f, indent=2, ensure_ascii=False)
+
+    def daily_check(self):
+        """每日检查"""
+        print("\n" + "="*80)
+        print(f"v3量化系统 - 每日检查")
+        print(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("="*80)
+
+        # 获取最新数据
+        print("\n正在获取最新数据...")
+        df = self.fetcher.fetch_history('BTC-USDT', '1h', days=200)
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+        current_price = df['close'].iloc[-1]
+        current_time = df['datetime'].iloc[-1]
+
+        print(f"✅ 数据已更新")
+        print(f"   最新价格: {current_price:,.2f} USDT")
+        print(f"   数据时间: {current_time}")
+
+        # 检测市场状态
+        print("\n正在分析市场状态...")
+        details = self.detector.get_detection_details(df, -1)
+
+        score = details['comprehensive_score']
+        strength = details['trend_strength']
+        decel = details['deceleration_penalty']
+        drawdown = details['drawdown_penalty']
+
+        print(f"\n市场分析结果:")
+        print(f"  综合评分: {score:.2f}/10")
+        print(f"  趋势强度: {strength}")
+        print(f"  减速扣分: {decel:.2f}")
+        print(f"  回撤扣分: {drawdown:.2f}")
+        print(f"  回撤幅度: {details['drawdown_90d']:+.2%}")
+
+        print(f"\n各周期趋势:")
+        print(f"  180天: {details['trend_365d']:+.2%}")
+        print(f"  150天: {details['trend_180d']:+.2%}")
+        print(f"  90天: {details['trend_90d']:+.2%}")
+        print(f"  30天: {details['trend_30d']:+.2%}")
+
+        # 判断信号（使用回测验证的阈值）
+        signal = self._generate_signal(score, decel, drawdown)
+
+        # 当前状态
+        print(f"\n当前状态:")
+        print(f"  账户资金: {self.capital:,.2f} USDT")
+        print(f"  持仓状态: {'持仓' if self.position else '空仓'}")
+
+        if self.position:
+            unrealized_pnl_pct = (current_price / self.entry_price - 1) * self.leverage
+            unrealized_pnl = self.capital * unrealized_pnl_pct
+            total_value = self.capital + unrealized_pnl
+
+            print(f"  开仓价格: {self.entry_price:,.2f} USDT")
+            print(f"  开仓日期: {self.entry_date}")
+            print(f"  持仓天数: {(datetime.now() - datetime.fromisoformat(self.entry_date)).days}天")
+            print(f"  未实现盈亏: {unrealized_pnl:+,.2f} USDT ({unrealized_pnl_pct*100:+.2f}%)")
+            print(f"  账户总值: {total_value:,.2f} USDT")
+
+        # 生成建议
+        recommendation = self._generate_recommendation(signal, current_price, details)
+
+        # 记录检查
+        self._log_check(current_time, current_price, details, signal, recommendation)
+
+        # 保存状态
+        self.save_state()
+
+        return recommendation
+
+    def _generate_signal(self, score, decel, drawdown):
+        """生成交易信号
+
+        买入条件：评分>7.5 AND 减速>-2.0 AND 回撤>-2.0
+        卖出条件：评分<4.0
+        """
+        if self.current_state == 'BULL':
+            # 持仓中，检查卖出信号
+            if score < 4.0:
+                return 'SELL'
+            else:
+                return 'HOLD'
+        else:
+            # 空仓中，检查买入信号
+            if score > 7.5 and decel > -2.0 and drawdown > -2.0:
+                return 'BUY'
+            else:
+                return 'WAIT'
+
+    def _generate_recommendation(self, signal, current_price, details):
+        """生成交易建议"""
+        print(f"\n" + "="*80)
+        print("交易建议")
+        print("="*80)
+
+        recommendation = {
+            'signal': signal,
+            'price': current_price,
+            'timestamp': datetime.now().isoformat(),
+            'details': details
+        }
+
+        if signal == 'BUY':
+            # 买入建议
+            position_value = self.capital * self.leverage
+            commission = position_value * self.fee_rate
+            net_capital = self.capital - commission
+
+            print(f"\n🟢 建议：买入BTC")
+            print(f"\n操作细节:")
+            print(f"  买入价格: {current_price:,.2f} USDT")
+            print(f"  投入资金: {self.capital:,.2f} USDT")
+            print(f"  杠杆倍数: {self.leverage}x")
+            print(f"  持仓价值: {position_value:,.2f} USDT")
+            print(f"  手续费: {commission:,.2f} USDT ({self.fee_rate*100:.2f}%)")
+            print(f"  净成本: {net_capital:,.2f} USDT")
+
+            print(f"\n理由:")
+            print(f"  ✅ 综合评分 {details['comprehensive_score']:.2f} > 7.5 (强牛市)")
+            print(f"  ✅ 减速扣分 {details['deceleration_penalty']:.2f} > -2.0 (趋势健康)")
+            print(f"  ✅ 回撤扣分 {details['drawdown_penalty']:.2f} > -2.0 (价格不高)")
+
+            print(f"\n⚠️  风险提示:")
+            print(f"  - 加密货币波动大，可能快速下跌")
+            print(f"  - 杠杆{self.leverage}x会放大盈亏")
+            print(f"  - 建议设置止损：如评分降到<4.0立即卖出")
+
+            recommendation['action'] = 'BUY'
+            recommendation['amount'] = self.capital
+            recommendation['leverage'] = self.leverage
+
+        elif signal == 'SELL':
+            # 卖出建议
+            price_change_pct = (current_price / self.entry_price - 1)
+            pnl = self.capital * price_change_pct * self.leverage
+
+            exit_value = self.capital * self.leverage * (current_price / self.entry_price)
+            commission = exit_value * self.fee_rate
+
+            final_capital = self.capital + pnl - commission
+            total_return = (final_capital / self.initial_capital - 1)
+
+            print(f"\n🔴 建议：卖出BTC")
+            print(f"\n操作细节:")
+            print(f"  卖出价格: {current_price:,.2f} USDT")
+            print(f"  开仓价格: {self.entry_price:,.2f} USDT")
+            print(f"  价格变化: {price_change_pct*100:+.2f}%")
+            print(f"  盈亏(含杠杆): {pnl:+,.2f} USDT ({price_change_pct*self.leverage*100:+.2f}%)")
+            print(f"  手续费: {commission:,.2f} USDT")
+            print(f"  卖出后资金: {final_capital:,.2f} USDT")
+            print(f"  累计收益率: {total_return*100:+.2f}%")
+
+            print(f"\n理由:")
+            print(f"  ⚠️  综合评分 {details['comprehensive_score']:.2f} < 4.0 (进入熊市/深度震荡)")
+
+            if pnl > 0:
+                print(f"\n✅ 当前盈利，建议止盈")
+            else:
+                print(f"\n⚠️  当前亏损，建议止损")
+
+            recommendation['action'] = 'SELL'
+            recommendation['expected_pnl'] = pnl
+            recommendation['expected_return'] = price_change_pct * self.leverage
+
+        elif signal == 'HOLD':
+            # 继续持有
+            price_change_pct = (current_price / self.entry_price - 1)
+            unrealized_pnl = self.capital * price_change_pct * self.leverage
+
+            print(f"\n🟡 建议：继续持有")
+            print(f"\n当前状态:")
+            print(f"  未实现盈亏: {unrealized_pnl:+,.2f} USDT ({price_change_pct*self.leverage*100:+.2f}%)")
+            print(f"  持仓{(datetime.now() - datetime.fromisoformat(self.entry_date)).days}天")
+
+            print(f"\n理由:")
+            print(f"  ✅ 综合评分 {details['comprehensive_score']:.2f} 仍高于4.0")
+            print(f"  ✅ 牛市趋势未结束")
+
+            recommendation['action'] = 'HOLD'
+            recommendation['unrealized_pnl'] = unrealized_pnl
+
+        else:  # WAIT
+            # 继续等待
+            print(f"\n⚪ 建议：继续观望")
+            print(f"\n理由:")
+
+            reasons = []
+            if details['comprehensive_score'] <= 7.5:
+                reasons.append(f"  ⚠️  评分 {details['comprehensive_score']:.2f} ≤ 7.5 (不够强)")
+            if details['deceleration_penalty'] <= -2.0:
+                reasons.append(f"  ⚠️  减速扣分 {details['deceleration_penalty']:.2f} ≤ -2.0 (趋势放缓)")
+            if details['drawdown_penalty'] <= -2.0:
+                reasons.append(f"  ⚠️  回撤扣分 {details['drawdown_penalty']:.2f} ≤ -2.0 (从高位回撤)")
+
+            for reason in reasons:
+                print(reason)
+
+            print(f"\n  建议等待更明确的买入信号")
+
+            recommendation['action'] = 'WAIT'
+
+        print(f"\n" + "="*80)
+
+        return recommendation
+
+    def execute_trade(self, action: str, price: float):
+        """执行交易（手动确认后调用）
+
+        Args:
+            action: 'BUY' 或 'SELL'
+            price: 成交价格
+        """
+        if action == 'BUY':
+            if self.position:
+                print("⚠️  已有持仓，不能重复买入")
+                return False
+
+            # 计算手续费
+            position_value = self.capital * self.leverage
+            commission = position_value * self.fee_rate
+            self.capital -= commission
+
+            # 记录开仓信息
+            self.position = 1
+            self.entry_price = price
+            self.entry_date = datetime.now().isoformat()
+            self.current_state = 'BULL'
+
+            # 记录交易
+            trade = {
+                'type': 'BUY',
+                'price': price,
+                'capital_before': self.capital + commission,
+                'capital_after': self.capital,
+                'commission': commission,
+                'leverage': self.leverage,
+                'timestamp': self.entry_date
+            }
+            self._log_trade(trade)
+
+            print(f"✅ 买入成功")
+            print(f"   成交价格: {price:,.2f} USDT")
+            print(f"   手续费: {commission:,.2f} USDT")
+            print(f"   剩余资金: {self.capital:,.2f} USDT")
+
+            self.save_state()
+            return True
+
+        elif action == 'SELL':
+            if not self.position:
+                print("⚠️  当前空仓，无法卖出")
+                return False
+
+            # 计算盈亏
+            price_change_pct = (price / self.entry_price - 1)
+            pnl = self.capital * price_change_pct * self.leverage
+
+            # 计算手续费
+            exit_value = self.capital * self.leverage * (price / self.entry_price)
+            commission = exit_value * self.fee_rate
+
+            # 更新资金
+            capital_before = self.capital
+            self.capital += pnl - commission
+
+            # 记录交易
+            trade = {
+                'type': 'SELL',
+                'entry_price': self.entry_price,
+                'exit_price': price,
+                'entry_date': self.entry_date,
+                'exit_date': datetime.now().isoformat(),
+                'holding_days': (datetime.now() - datetime.fromisoformat(self.entry_date)).days,
+                'capital_before': capital_before,
+                'pnl': pnl,
+                'commission': commission,
+                'capital_after': self.capital,
+                'return': price_change_pct * self.leverage,
+                'leverage': self.leverage
+            }
+            self._log_trade(trade)
+
+            # 清空持仓
+            self.position = 0
+            self.entry_price = 0
+            self.entry_date = None
+            self.current_state = 'RANGING'
+
+            print(f"✅ 卖出成功")
+            print(f"   成交价格: {price:,.2f} USDT")
+            print(f"   盈亏: {pnl:+,.2f} USDT ({price_change_pct*self.leverage*100:+.2f}%)")
+            print(f"   手续费: {commission:,.2f} USDT")
+            print(f"   当前资金: {self.capital:,.2f} USDT")
+            print(f"   累计收益率: {(self.capital/self.initial_capital - 1)*100:+.2f}%")
+
+            self.save_state()
+            return True
+
+        return False
+
+    def _log_check(self, timestamp, price, details, signal, recommendation):
+        """记录检查日志"""
+        logs = {'trades': [], 'checks': []}
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, 'r') as f:
+                    logs = json.load(f)
+            except:
+                pass
+
+        check_log = {
+            'timestamp': str(timestamp),
+            'price': float(price),
+            'score': float(details['comprehensive_score']),
+            'strength': details['trend_strength'],
+            'decel': float(details['deceleration_penalty']),
+            'drawdown': float(details['drawdown_penalty']),
+            'signal': signal,
+            'action': recommendation.get('action', 'NONE')
+        }
+
+        if 'checks' not in logs:
+            logs['checks'] = []
+        logs['checks'].append(check_log)
+
+        # 保留最近100次检查
+        logs['checks'] = logs['checks'][-100:]
+
+        with open(self.log_file, 'w') as f:
+            json.dump(logs, f, indent=2, ensure_ascii=False)
+
+    def _log_trade(self, trade):
+        """记录交易日志"""
+        logs = {'trades': [], 'checks': []}
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, 'r') as f:
+                    logs = json.load(f)
+            except:
+                pass
+
+        if 'trades' not in logs:
+            logs['trades'] = []
+        logs['trades'].append(trade)
+
+        with open(self.log_file, 'w') as f:
+            json.dump(logs, f, indent=2, ensure_ascii=False)
+
+    def get_performance(self):
+        """获取性能统计"""
+        if not os.path.exists(self.log_file):
+            return None
+
+        with open(self.log_file, 'r') as f:
+            logs = json.load(f)
+
+        trades = logs.get('trades', [])
+
+        if not trades:
+            return {
+                'total_return': 0,
+                'num_trades': 0,
+                'win_rate': 0
+            }
+
+        # 统计卖出交易
+        sell_trades = [t for t in trades if t['type'] == 'SELL']
+
+        total_return = (self.capital / self.initial_capital - 1)
+        num_trades = len(sell_trades)
+        wins = len([t for t in sell_trades if t.get('pnl', 0) > 0])
+        win_rate = wins / num_trades if num_trades > 0 else 0
+
+        return {
+            'initial_capital': self.initial_capital,
+            'current_capital': self.capital,
+            'total_return': total_return,
+            'num_trades': num_trades,
+            'win_rate': win_rate,
+            'trades': sell_trades
+        }
+
+
+def main():
+    """主程序 - 每日检查"""
+    print("\n" + "="*80)
+    print("v3量化系统 - 实盘交易器")
+    print("="*80)
+
+    # 创建交易器
+    trader = LiveTrader(
+        initial_capital=2000.0,  # 初始资金
+        leverage=1.0,            # 1x杠杆（无杠杆）
+        fee_rate=0.0004,         # Binance手续费0.04%
+    )
+
+    # 每日检查
+    recommendation = trader.daily_check()
+
+    # 显示性能统计
+    perf = trader.get_performance()
+    if perf and perf['num_trades'] > 0:
+        print(f"\n" + "="*80)
+        print("历史表现")
+        print("="*80)
+        print(f"  初始资金: {perf['initial_capital']:,.2f} USDT")
+        print(f"  当前资金: {perf['current_capital']:,.2f} USDT")
+        print(f"  总收益率: {perf['total_return']*100:+.2f}%")
+        print(f"  交易次数: {perf['num_trades']}笔")
+        print(f"  胜率: {perf['win_rate']*100:.1f}%")
+
+    print(f"\n" + "="*80)
+    print("下一步操作")
+    print("="*80)
+
+    if recommendation['action'] in ['BUY', 'SELL']:
+        print(f"\n如果你同意以上建议，请在Binance手动执行交易，然后运行：")
+        print(f"  python -c \"from live_trader import LiveTrader; trader = LiveTrader(); trader.execute_trade('{recommendation['action']}', {recommendation['price']})\"")
+    else:
+        print(f"\n当前无需交易，明天同一时间再次检查。")
+
+    print(f"\n设置每日定时任务（cron）：")
+    print(f"  0 16 * * * cd {os.path.dirname(__file__)} && python3 live_trader.py")
+    print(f"  （每天16:00运行）")
+
+
+if __name__ == '__main__':
+    main()
