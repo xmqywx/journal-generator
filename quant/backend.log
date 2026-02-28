@@ -1,0 +1,12 @@
+INFO:     Will watch for changes in these directories: ['/Users/ying/Documents/Kris/quant/web/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [96229] using StatReload
+2026-02-28 06:48:53,526 quant.web.backend.services.backtest_storage INFO BacktestStorage initialized at data/backtests
+INFO:     Started server process [96417]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:52879 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52984 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53221 - "PUT /api/v1/friends/requests/cmm5hihj80001jb8szfak599d/accept HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53528 - "PUT /api/v1/friends/requests/cmm5hj04q0001jb70h02fp3n2/accept HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53637 - "GET /api/v1/friends/requests HTTP/1.1" 404 Not Found

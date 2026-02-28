@@ -1,0 +1,41 @@
+
+> frontend@0.0.0 dev
+> vite --host 0.0.0.0
+
+
+  VITE v7.3.1  ready in 187 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: http://192.168.0.100:5188/
+6:49:43 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+6:49:43 AM [vite] http proxy error: /api/candles?symbol=BTC-USDT&timeframe=1H&lookback_days=365&data_source=okx
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+6:49:44 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+6:49:44 AM [vite] http proxy error: /api/candles?symbol=BTC-USDT&timeframe=1H&lookback_days=365&data_source=okx
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+6:59:15 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+6:59:15 AM [vite] http proxy error: /api/candles?symbol=BTC-USDT&timeframe=1H&lookback_days=365&data_source=okx
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+6:59:16 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+6:59:16 AM [vite] http proxy error: /api/candles?symbol=BTC-USDT&timeframe=1H&lookback_days=365&data_source=okx
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
