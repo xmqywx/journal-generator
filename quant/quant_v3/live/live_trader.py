@@ -774,6 +774,241 @@ class LiveTrader:
             'trade_markers': trade_markers
         }
 
+    def get_trade_detail(self, trade_id: int):
+        """获取交易详情（Task 5）
+
+        Args:
+            trade_id: 交易ID（在trades数组中的索引）
+
+        Returns:
+            dict: 交易详情，如果不存在则返回None
+        """
+        if not os.path.exists(self.log_file):
+            return None
+
+        try:
+            with open(self.log_file, 'r') as f:
+                logs = json.load(f)
+
+            trades = logs.get('trades', [])
+
+            # 检查交易ID是否有效
+            if trade_id < 0 or trade_id >= len(trades):
+                return None
+
+            trade = trades[trade_id]
+
+            # 如果是SELL交易，包含完整的盈亏信息
+            if trade['type'] == 'SELL':
+                return {
+                    'id': trade_id,
+                    'type': trade['type'],
+                    'entry_price': trade.get('entry_price', 0),
+                    'exit_price': trade.get('exit_price', 0),
+                    'entry_date': trade.get('entry_date', ''),
+                    'exit_date': trade.get('exit_date', ''),
+                    'holding_days': trade.get('holding_days', 0),
+                    'capital_before': trade.get('capital_before', 0),
+                    'pnl': trade.get('pnl', 0),
+                    'commission': trade.get('commission', 0),
+                    'capital_after': trade.get('capital_after', 0),
+                    'return': trade.get('return', 0),
+                    'leverage': trade.get('leverage', 1.0)
+                }
+            # 如果是BUY交易，包含买入信息
+            else:
+                return {
+                    'id': trade_id,
+                    'type': trade['type'],
+                    'price': trade.get('price', 0),
+                    'capital_before': trade.get('capital_before', 0),
+                    'capital_after': trade.get('capital_after', 0),
+                    'commission': trade.get('commission', 0),
+                    'leverage': trade.get('leverage', 1.0),
+                    'timestamp': trade.get('timestamp', '')
+                }
+
+        except Exception as e:
+            print(f"❌ 获取交易详情失败: {e}")
+            return None
+
+    def get_logs(self, log_type: str = 'all', limit: int = 50):
+        """获取日志（Task 5）
+
+        Args:
+            log_type: 日志类型 ('all', 'trades', 'checks')
+            limit: 返回的最大日志数量
+
+        Returns:
+            dict: {
+                'trades': [...],    # 交易日志
+                'checks': [...],    # 检查日志
+                'count': int        # 总数量
+            }
+        """
+        if not os.path.exists(self.log_file):
+            return {
+                'trades': [],
+                'checks': [],
+                'count': 0
+            }
+
+        try:
+            with open(self.log_file, 'r') as f:
+                logs = json.load(f)
+
+            trades = logs.get('trades', [])
+            checks = logs.get('checks', [])
+
+            # 根据类型筛选
+            if log_type == 'trades':
+                # 只返回交易日志，按时间倒序
+                trades_limited = trades[-limit:] if limit > 0 else trades
+                trades_limited.reverse()
+                return {
+                    'trades': trades_limited,
+                    'checks': [],
+                    'count': len(trades_limited)
+                }
+            elif log_type == 'checks':
+                # 只返回检查日志，按时间倒序
+                checks_limited = checks[-limit:] if limit > 0 else checks
+                checks_limited.reverse()
+                return {
+                    'trades': [],
+                    'checks': checks_limited,
+                    'count': len(checks_limited)
+                }
+            else:
+                # 返回所有日志
+                trades_limited = trades[-limit:] if limit > 0 else trades
+                checks_limited = checks[-limit:] if limit > 0 else checks
+                trades_limited.reverse()
+                checks_limited.reverse()
+                return {
+                    'trades': trades_limited,
+                    'checks': checks_limited,
+                    'count': len(trades_limited) + len(checks_limited)
+                }
+
+        except Exception as e:
+            print(f"❌ 获取日志失败: {e}")
+            return {
+                'trades': [],
+                'checks': [],
+                'count': 0
+            }
+
+    def get_risk_alerts(self):
+        """获取风险警报（Task 6）
+
+        Returns:
+            list: [
+                {
+                    'level': 'warning|danger|info',
+                    'message': '警报内容',
+                    'timestamp': '...'
+                },
+                ...
+            ]
+        """
+        alerts = []
+        current_time = datetime.now().isoformat()
+
+        try:
+            # 获取最新数据
+            df = self.fetcher.fetch_history('BTC-USDT', '1h', days=200)
+            current_price = df['close'].iloc[-1]
+
+            # 检查1: 持仓未实现盈亏
+            if self.position == 1:
+                price_change_pct = (current_price / self.entry_price - 1) * self.leverage
+                unrealized_pnl = self.capital * price_change_pct
+
+                # 大幅亏损警告
+                if price_change_pct < -0.10:  # 亏损超过10%
+                    alerts.append({
+                        'level': 'danger',
+                        'message': f'当前亏损{price_change_pct*100:.2f}% ({unrealized_pnl:+.2f} USDT)，建议考虑止损',
+                        'timestamp': current_time
+                    })
+                elif price_change_pct < -0.05:  # 亏损超过5%
+                    alerts.append({
+                        'level': 'warning',
+                        'message': f'当前亏损{price_change_pct*100:.2f}% ({unrealized_pnl:+.2f} USDT)，请密切关注',
+                        'timestamp': current_time
+                    })
+
+                # 大幅盈利提示
+                if price_change_pct > 0.20:  # 盈利超过20%
+                    alerts.append({
+                        'level': 'info',
+                        'message': f'当前盈利{price_change_pct*100:.2f}% ({unrealized_pnl:+.2f} USDT)，可考虑止盈',
+                        'timestamp': current_time
+                    })
+
+                # 持仓时间过长警告
+                holding_days = (datetime.now() - datetime.fromisoformat(self.entry_date)).days
+                if holding_days > 180:
+                    alerts.append({
+                        'level': 'warning',
+                        'message': f'持仓已{holding_days}天，建议重新评估市场状态',
+                        'timestamp': current_time
+                    })
+
+            # 检查2: 市场状态警告
+            details = self.detector.get_detection_details(df, -1)
+            score = details['comprehensive_score']
+
+            # 评分急剧下降
+            if self.position == 1 and score < self.sell_threshold:
+                alerts.append({
+                    'level': 'danger',
+                    'message': f'市场评分{score:.2f}已低于卖出阈值{self.sell_threshold}，建议立即卖出',
+                    'timestamp': current_time
+                })
+            elif self.position == 1 and score < self.sell_threshold + 1:
+                alerts.append({
+                    'level': 'warning',
+                    'message': f'市场评分{score:.2f}接近卖出阈值{self.sell_threshold}，请密切关注',
+                    'timestamp': current_time
+                })
+
+            # 检查3: 回撤风险
+            drawdown_90d = details.get('drawdown_90d', 0)
+            if drawdown_90d < -0.15:  # 从高点回撤超过15%
+                alerts.append({
+                    'level': 'warning',
+                    'message': f'当前从90天高点回撤{drawdown_90d*100:.2f}%，市场可能转向',
+                    'timestamp': current_time
+                })
+
+            # 检查4: 减速警告
+            decel_penalty = details.get('deceleration_penalty', 0)
+            if self.position == 1 and decel_penalty < -3:
+                alerts.append({
+                    'level': 'warning',
+                    'message': f'趋势减速明显（扣分{decel_penalty:.2f}），上涨动能减弱',
+                    'timestamp': current_time
+                })
+
+            # 如果没有任何警报，添加一个正常状态
+            if len(alerts) == 0:
+                alerts.append({
+                    'level': 'info',
+                    'message': '系统运行正常，无风险警报',
+                    'timestamp': current_time
+                })
+
+        except Exception as e:
+            alerts.append({
+                'level': 'danger',
+                'message': f'获取风险警报失败: {str(e)}',
+                'timestamp': current_time
+            })
+
+        return alerts
+
 
 def main():
     """主程序 - 每日检查"""
