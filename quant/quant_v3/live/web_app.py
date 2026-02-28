@@ -1,13 +1,21 @@
 """
 v3量化系统 - Web界面
 """
+import eventlet
+eventlet.monkey_patch()
 
 from flask import Flask, render_template, jsonify, request
+from flask_socketio import SocketIO, emit
 from live_trader import LiveTrader
 import os
 from datetime import datetime
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
+
+# Initialize SocketIO with CORS support
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
 trader = LiveTrader()
 
 
@@ -192,10 +200,20 @@ def get_logs():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/backtest')
+def backtest_page():
+    """回测页面"""
+    return render_template('backtest.html')
+
+
 if __name__ == '__main__':
     # 创建templates目录
     os.makedirs('templates', exist_ok=True)
     os.makedirs('static', exist_ok=True)
+
+    # Initialize backtest routes
+    from quant_v3.live.backtest.routes import init_routes
+    init_routes(app, socketio)
 
     print("\n" + "="*80)
     print("v3量化系统 - Web界面")
@@ -204,4 +222,4 @@ if __name__ == '__main__':
     print("\n访问地址: http://localhost:5001")
     print("\n按 Ctrl+C 停止服务器\n")
 
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False)
