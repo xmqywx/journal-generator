@@ -296,16 +296,16 @@ def get_backtest_history():
                 'status': run.status,
                 'created_at': run.created_at.isoformat(),
                 'completed_at': run.completed_at.isoformat() if run.completed_at else None,
+                'total_return': 0.0,
+                'num_trades': 0,
             }
 
             # Add summary metrics if result exists
             if run.result:
-                run_dict['summary'] = {
-                    'total_return': float(run.result.total_return) if run.result.total_return else None,
-                    'num_trades': run.result.num_trades,
-                    'win_rate': float(run.result.win_rate) if run.result.win_rate else None,
-                    'final_capital': float(run.result.final_capital) if run.result.final_capital else None,
-                }
+                run_dict['total_return'] = float(run.result.total_return) if run.result.total_return else 0.0
+                run_dict['num_trades'] = run.result.num_trades if run.result.num_trades else 0
+                run_dict['win_rate'] = float(run.result.win_rate) if run.result.win_rate else 0.0
+                run_dict['final_capital'] = float(run.result.final_capital) if run.result.final_capital else 0.0
 
             runs_data.append(run_dict)
 
@@ -346,62 +346,38 @@ def get_backtest_detail(run_id):
         if not run:
             return jsonify({'error': f'回测运行 #{run_id} 不存在'}), 404
 
-        # Build response
+        # Build response with metrics at top level
         response = {
-            'run': {
-                'id': run.id,
-                'symbol': run.symbol,
-                'start_date': run.start_date.isoformat(),
-                'end_date': run.end_date.isoformat(),
-                'initial_capital': float(run.initial_capital),
-                'leverage': float(run.leverage),
-                'fee_rate': float(run.fee_rate),
-                'strategy_params': run.strategy_params,
-                'status': run.status,
-                'created_at': run.created_at.isoformat(),
-                'completed_at': run.completed_at.isoformat() if run.completed_at else None,
-            }
+            'id': run.id,
+            'symbol': run.symbol,
+            'start_date': run.start_date.isoformat(),
+            'end_date': run.end_date.isoformat(),
+            'initial_capital': float(run.initial_capital),
+            'leverage': float(run.leverage),
+            'fee_rate': float(run.fee_rate),
+            'strategy_params': run.strategy_params,
+            'status': run.status,
+            'created_at': run.created_at.isoformat(),
+            'completed_at': run.completed_at.isoformat() if run.completed_at else None,
         }
 
-        # Add result if exists
+        # Add metrics if result exists
         if run.result:
             result = run.result
-            response['result'] = {
-                'total_return': float(result.total_return) if result.total_return else None,
-                'annual_return': float(result.annual_return) if result.annual_return else None,
-                'num_trades': result.num_trades,
-                'win_rate': float(result.win_rate) if result.win_rate else None,
-                'max_drawdown': float(result.max_drawdown) if result.max_drawdown else None,
-                'sharpe_ratio': float(result.sharpe_ratio) if result.sharpe_ratio else None,
-                'avg_holding_days': float(result.avg_holding_days) if result.avg_holding_days else None,
-                'profit_loss_ratio': float(result.profit_loss_ratio) if result.profit_loss_ratio else None,
-                'max_consecutive_losses': result.max_consecutive_losses,
-                'final_capital': float(result.final_capital) if result.final_capital else None,
+            response['metrics'] = {
+                'total_return': float(result.total_return) if result.total_return else 0.0,
+                'annual_return': float(result.annual_return) if result.annual_return else 0.0,
+                'num_trades': result.num_trades if result.num_trades else 0,
+                'win_rate': float(result.win_rate) if result.win_rate else 0.0,
+                'max_drawdown': float(result.max_drawdown) if result.max_drawdown else 0.0,
+                'sharpe_ratio': float(result.sharpe_ratio) if result.sharpe_ratio else 0.0,
+                'avg_holding_days': float(result.avg_holding_days) if result.avg_holding_days else 0.0,
+                'profit_loss_ratio': float(result.profit_loss_ratio) if result.profit_loss_ratio else 0.0,
+                'max_consecutive_losses': result.max_consecutive_losses if result.max_consecutive_losses else 0,
+                'final_capital': float(result.final_capital) if result.final_capital else 0.0,
             }
         else:
-            response['result'] = None
-
-        # Add trades
-        trades = db.query(BacktestTrade) \
-                   .filter(BacktestTrade.run_id == run_id) \
-                   .order_by(BacktestTrade.entry_date) \
-                   .all()
-
-        response['trades'] = [
-            {
-                'id': trade.id,
-                'entry_date': trade.entry_date.isoformat(),
-                'entry_price': float(trade.entry_price),
-                'entry_score': float(trade.entry_score) if trade.entry_score else None,
-                'exit_date': trade.exit_date.isoformat(),
-                'exit_price': float(trade.exit_price),
-                'exit_score': float(trade.exit_score) if trade.exit_score else None,
-                'pnl': float(trade.pnl) if trade.pnl else None,
-                'return_pct': float(trade.return_pct) if trade.return_pct else None,
-                'holding_days': trade.holding_days,
-            }
-            for trade in trades
-        ]
+            response['metrics'] = None
 
         return jsonify(response)
 
@@ -442,6 +418,121 @@ def delete_backtest(run_id):
     except Exception as e:
         print(f"删除回测错误: {str(e)}")
         db.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+
+@backtest_bp.route('/<int:run_id>/trades', methods=['GET'])
+def get_backtest_trades(run_id):
+    """
+    获取回测交易明细
+
+    Returns:
+        [
+            {
+                "id": 1,
+                "entry_date": "2024-01-01",
+                "entry_price": 42000.0,
+                "exit_date": "2024-01-15",
+                "exit_price": 44000.0,
+                "pnl": 2000.0,
+                "return_pct": 4.76,
+                "holding_days": 14
+            },
+            ...
+        ]
+    """
+    db = SessionLocal()
+    try:
+        # Verify run exists
+        run = db.query(BacktestRun).get(run_id)
+        if not run:
+            return jsonify({'error': f'回测运行 #{run_id} 不存在'}), 404
+
+        # Fetch trades
+        trades = db.query(BacktestTrade) \
+                   .filter(BacktestTrade.run_id == run_id) \
+                   .order_by(BacktestTrade.entry_date) \
+                   .all()
+
+        trades_data = [
+            {
+                'id': trade.id,
+                'entry_date': trade.entry_date.isoformat(),
+                'entry_price': float(trade.entry_price),
+                'entry_score': float(trade.entry_score) if trade.entry_score else None,
+                'exit_date': trade.exit_date.isoformat(),
+                'exit_price': float(trade.exit_price),
+                'exit_score': float(trade.exit_score) if trade.exit_score else None,
+                'pnl': float(trade.pnl) if trade.pnl else None,
+                'return_pct': float(trade.return_pct) if trade.return_pct else None,
+                'holding_days': trade.holding_days,
+            }
+            for trade in trades
+        ]
+
+        return jsonify(trades_data)
+
+    except Exception as e:
+        print(f"获取交易明细错误: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+
+@backtest_bp.route('/<int:run_id>/price_data', methods=['GET'])
+def get_backtest_price_data(run_id):
+    """
+    获取回测期间的价格数据（用于绘制K线图）
+
+    Returns:
+        [
+            {
+                "timestamp": "2024-01-01T00:00:00",
+                "open": 42000.0,
+                "high": 43000.0,
+                "low": 41500.0,
+                "close": 42500.0,
+                "volume": 1234567.89
+            },
+            ...
+        ]
+    """
+    from quant_v3.live.backtest.database import PriceDataCache
+
+    db = SessionLocal()
+    try:
+        # Verify run exists and get date range
+        run = db.query(BacktestRun).get(run_id)
+        if not run:
+            return jsonify({'error': f'回测运行 #{run_id} 不存在'}), 404
+
+        # Fetch price data from cache
+        price_data = db.query(PriceDataCache) \
+                       .filter(PriceDataCache.symbol == run.symbol) \
+                       .filter(PriceDataCache.date >= run.start_date) \
+                       .filter(PriceDataCache.date <= run.end_date) \
+                       .order_by(PriceDataCache.date) \
+                       .all()
+
+        # Convert to list of dicts
+        data = [
+            {
+                'timestamp': row.date.isoformat() + 'T00:00:00',
+                'open': float(row.open),
+                'high': float(row.high),
+                'low': float(row.low),
+                'close': float(row.close),
+                'volume': float(row.volume),
+            }
+            for row in price_data
+        ]
+
+        return jsonify(data)
+
+    except Exception as e:
+        print(f"获取价格数据错误: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         db.close()

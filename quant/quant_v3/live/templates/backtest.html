@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>v3量化交易系统 - 回测系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body {
+            background: #FFFFFF;
+            color: #1F2937;
+        }
+        .nav-tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .nav-tab.active {
+            border-bottom-color: #2563EB;
+            color: #2563EB;
+            font-weight: 600;
+        }
+        .symbol-card {
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid #E5E7EB;
+        }
+        .symbol-card.selected {
+            border-color: #2563EB;
+            background: #EFF6FF;
+        }
+        .symbol-card:hover {
+            border-color: #93C5FD;
+        }
+        .metric-card {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            position: relative;
+            height: 500px;
+            width: 100%;
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 32px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        }
+        .progress-bar {
+            height: 8px;
+            background: #E5E7EB;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #2563EB;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- 顶部导航 -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center space-x-8">
+                <div class="nav-tab" onclick="window.location.href='/'">实盘监控</div>
+                <div class="nav-tab active">回测系统</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="container mx-auto px-4 py-8">
+
+        <!-- 回测配置面板 -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8 shadow-sm">
+            <h2 class="text-xl font-bold mb-6 text-gray-900">
+                <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                回测配置
+            </h2>
+
+            <!-- 交易对选择 -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-3">交易对选择</label>
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="symbol-card selected rounded-lg p-4 text-center" data-symbol="BTC-USDT">
+                        <div class="text-2xl mb-2">₿</div>
+                        <div class="font-semibold">BTC-USDT</div>
+                    </div>
+                    <div class="symbol-card rounded-lg p-4 text-center" data-symbol="ETH-USDT">
+                        <div class="text-2xl mb-2">Ξ</div>
+                        <div class="font-semibold">ETH-USDT</div>
+                    </div>
+                    <div class="symbol-card rounded-lg p-4 text-center" data-symbol="BNB-USDT">
+                        <div class="text-2xl mb-2">◆</div>
+                        <div class="font-semibold">BNB-USDT</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 时间范围 -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-3">时间范围</label>
+                <div class="flex items-center space-x-4 mb-3">
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="timeRange" value="365" class="form-radio text-blue-600" checked>
+                        <span class="ml-2">最近1年</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="timeRange" value="730" class="form-radio text-blue-600">
+                        <span class="ml-2">最近2年</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="timeRange" value="1095" class="form-radio text-blue-600">
+                        <span class="ml-2">最近3年</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="timeRange" value="custom" class="form-radio text-blue-600">
+                        <span class="ml-2">自定义</span>
+                    </label>
+                </div>
+                <div id="customDateRange" class="hidden flex items-center space-x-3">
+                    <input type="date" id="startDate" class="px-3 py-2 border border-gray-300 rounded-lg">
+                    <span>至</span>
+                    <input type="date" id="endDate" class="px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+            </div>
+
+            <!-- 资金配置 -->
+            <div class="grid grid-cols-3 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">初始资金 (USDT)</label>
+                    <input type="number" id="initialCapital" value="2000" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">杠杆倍数</label>
+                    <select id="leverage" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                        <option value="1.0">1.0x</option>
+                        <option value="2.0">2.0x</option>
+                        <option value="3.0">3.0x</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">手续费率 (%)</label>
+                    <input type="number" id="feeRate" value="0.04" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+            </div>
+
+            <!-- 高级参数（可折叠） -->
+            <details class="mb-6">
+                <summary class="cursor-pointer text-sm font-medium text-gray-700 mb-3">
+                    <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                    高级策略参数
+                </summary>
+                <div class="grid grid-cols-2 gap-4 mt-3 pl-4">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-2">买入阈值</label>
+                        <input type="number" id="buyThreshold" value="7.5" step="0.1" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-2">卖出阈值</label>
+                        <input type="number" id="sellThreshold" value="4.0" step="0.1" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+            </details>
+
+            <!-- 操作按钮 -->
+            <div class="flex space-x-3">
+                <button id="startBacktest" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition">
+                    <svg class="w-5 h-5 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    开始回测
+                </button>
+                <button id="resetConfig" class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold transition">
+                    <svg class="w-5 h-5 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    重置
+                </button>
+            </div>
+        </div>
+
+        <!-- 图表区域（初始隐藏） -->
+        <div id="resultsSection" class="hidden">
+            <!-- K线图 -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8 shadow-sm">
+                <h2 class="text-xl font-bold mb-4 text-gray-900">
+                    <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    价格走势与交易信号
+                </h2>
+                <div id="chartContainer" class="chart-container"></div>
+            </div>
+
+            <!-- 回测结果指标 -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8 shadow-sm">
+                <h2 class="text-xl font-bold mb-4 text-gray-900">
+                    <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    回测结果概览
+                </h2>
+                <div class="grid grid-cols-4 gap-4">
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">总收益率</div>
+                        <div id="metricTotalReturn" class="text-2xl font-bold text-green-600">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">年化收益率</div>
+                        <div id="metricAnnualReturn" class="text-2xl font-bold text-blue-600">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">交易次数</div>
+                        <div id="metricNumTrades" class="text-2xl font-bold text-gray-900">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">胜率</div>
+                        <div id="metricWinRate" class="text-2xl font-bold text-purple-600">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">最大回撤</div>
+                        <div id="metricMaxDrawdown" class="text-2xl font-bold text-red-600">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">夏普比率</div>
+                        <div id="metricSharpe" class="text-2xl font-bold text-indigo-600">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">平均持仓天数</div>
+                        <div id="metricAvgHolding" class="text-2xl font-bold text-gray-900">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="text-sm text-gray-500 mb-1">盈亏比</div>
+                        <div id="metricProfitLoss" class="text-2xl font-bold text-teal-600">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 交易明细表 -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6 mb-8 shadow-sm">
+                <h2 class="text-xl font-bold mb-4 text-gray-900">
+                    <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    交易明细
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">开仓日期</th>
+                                <th class="px-4 py-3 text-right text-sm font-semibold text-gray-700">开仓价</th>
+                                <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">平仓日期</th>
+                                <th class="px-4 py-3 text-right text-sm font-semibold text-gray-700">平仓价</th>
+                                <th class="px-4 py-3 text-right text-sm font-semibold text-gray-700">收益</th>
+                                <th class="px-4 py-3 text-right text-sm font-semibold text-gray-700">持仓天数</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tradesTableBody" class="divide-y divide-gray-200">
+                            <!-- 动态填充 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 历史回测记录 -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-900">
+                    <svg class="w-6 h-6 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    历史回测记录
+                </h2>
+                <button id="refreshHistory" class="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                    <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    刷新
+                </button>
+            </div>
+            <div id="historyList" class="space-y-3">
+                <!-- 动态填充 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 进度模态框 -->
+    <div id="progressModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-lg font-bold mb-4 text-center">
+                <svg class="w-6 h-6 inline-block mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                回测进行中
+            </h3>
+            <div class="progress-bar mb-3">
+                <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div id="progressText" class="text-center text-sm text-gray-600 mb-4">准备中...</div>
+            <button id="cancelBacktest" class="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                取消回测
+            </button>
+        </div>
+    </div>
+
+    <script src="/static/backtest.js"></script>
+</body>
+</html>
