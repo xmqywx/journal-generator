@@ -101,10 +101,11 @@ def test_arbitrage():
     trades = []
     equity_curve = []
 
-    # 策略参数
-    entry_threshold = 2.0  # Z-score入场阈值
-    exit_threshold = 0.5   # Z-score出场阈值
-    position_size_pct = 0.5  # 使用50%资金
+    # 策略参数（可通过命令行参数修改）
+    import sys
+    entry_threshold = float(sys.argv[1]) if len(sys.argv) > 1 else 2.0  # Z-score入场阈值
+    exit_threshold = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5   # Z-score出场阈值
+    position_size_pct = float(sys.argv[3]) if len(sys.argv) > 3 else 0.5  # 使用50%资金
 
     print(f"\n策略参数:")
     print(f"  入场阈值: ±{entry_threshold}")
