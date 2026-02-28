@@ -2,7 +2,7 @@
 回测系统数据库模型
 """
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine,
     Column,
@@ -25,7 +25,13 @@ DATABASE_URL = os.getenv(
     f"postgresql://{os.getenv('USER', 'postgres')}@localhost:5432/quant_backtest"
 )
 
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=5,           # Number of connections to keep open
+    max_overflow=10,       # Max additional connections when pool is full
+    pool_pre_ping=True     # Check connection health before using
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -43,8 +49,13 @@ class BacktestRun(Base):
     fee_rate = Column(Numeric(6, 4), nullable=False)
     strategy_params = Column(JSON, nullable=False)
     status = Column(String(20), nullable=False, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     completed_at = Column(DateTime, nullable=True)
+
+    # Table args for composite index
+    __table_args__ = (
+        Index('ix_backtest_runs_symbol_dates', 'symbol', 'start_date', 'end_date'),
+    )
 
     # Relationships
     result = relationship(
