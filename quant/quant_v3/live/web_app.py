@@ -204,4 +204,4 @@ if __name__ == '__main__':
     print("\n访问地址: http://localhost:5001")
     print("\n按 Ctrl+C 停止服务器\n")
 
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=False)
