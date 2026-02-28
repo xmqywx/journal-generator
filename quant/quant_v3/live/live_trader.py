@@ -279,6 +279,9 @@ class LiveTrader:
         print(f"  90天: {details['trend_90d']:+.2%}")
         print(f"  30天: {details['trend_30d']:+.2%}")
 
+        # 保存评分历史（用于图表）
+        self._save_score_history(current_time, score)
+
         # 判断信号（使用回测验证的阈值）
         signal = self._generate_signal(score, decel, drawdown)
 
@@ -539,6 +542,64 @@ class LiveTrader:
 
         return False
 
+    def _save_score_history(self, timestamp, score):
+        """保存评分历史（用于图表）
+
+        Args:
+            timestamp: 时间戳
+            score: 综合评分
+        """
+        # 加载现有日志
+        logs = {'trades': [], 'checks': []}
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, 'r') as f:
+                    logs = json.load(f)
+            except:
+                pass
+
+        # 初始化score_history
+        if 'score_history' not in logs:
+            logs['score_history'] = []
+
+        # 获取日期（不含时间）
+        date_str = timestamp.strftime('%Y-%m-%d')
+
+        # 检查是否已存在该日期的记录（避免重复）
+        existing_dates = [item['date'] for item in logs['score_history']]
+        if date_str not in existing_dates:
+            logs['score_history'].append({
+                'date': date_str,
+                'score': round(float(score), 2),
+                'timestamp': str(timestamp)
+            })
+
+        # 保留最近180天
+        logs['score_history'] = logs['score_history'][-180:]
+
+        # 保存回文件
+        with open(self.log_file, 'w') as f:
+            json.dump(logs, f, indent=2, ensure_ascii=False)
+
+    def get_score_history(self, days=90):
+        """获取评分历史（用于图表）
+
+        Args:
+            days: 获取最近N天的数据，默认90天
+
+        Returns:
+            list: [{'date': '2024-01-01', 'score': 7.5, 'timestamp': '...'}, ...]
+        """
+        if not os.path.exists(self.log_file):
+            return []
+
+        try:
+            with open(self.log_file, 'r') as f:
+                logs = json.load(f)
+            return logs.get('score_history', [])[-days:]
+        except:
+            return []
+
     def _log_check(self, timestamp, price, details, signal, recommendation):
         """记录检查日志"""
         logs = {'trades': [], 'checks': []}
@@ -552,20 +613,26 @@ class LiveTrader:
         check_log = {
             'timestamp': str(timestamp),
             'price': float(price),
-            'score': float(details['comprehensive_score']),
-            'strength': details['trend_strength'],
-            'decel': float(details['deceleration_penalty']),
-            'drawdown': float(details['drawdown_penalty']),
+            'score': round(float(details['comprehensive_score']), 2),
             'signal': signal,
-            'action': recommendation.get('action', 'NONE')
+            'details': {
+                'trend_strength': details['trend_strength'],
+                'deceleration_penalty': round(float(details['deceleration_penalty']), 2),
+                'drawdown_penalty': round(float(details['drawdown_penalty']), 2),
+                'trend_30d': round(float(details['trend_30d']), 4),
+                'trend_90d': round(float(details['trend_90d']), 4),
+                'trend_180d': round(float(details['trend_180d']), 4),
+                'trend_365d': round(float(details['trend_365d']), 4)
+            },
+            'reason': recommendation.get('action', 'NONE')
         }
 
         if 'checks' not in logs:
             logs['checks'] = []
         logs['checks'].append(check_log)
 
-        # 保留最近100次检查
-        logs['checks'] = logs['checks'][-100:]
+        # 保留最近30次检查
+        logs['checks'] = logs['checks'][-30:]
 
         with open(self.log_file, 'w') as f:
             json.dump(logs, f, indent=2, ensure_ascii=False)
