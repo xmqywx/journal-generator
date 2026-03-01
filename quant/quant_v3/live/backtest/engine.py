@@ -41,7 +41,9 @@ class BacktestEngine:
         initial_capital: float,
         leverage: float,
         fee_rate: float,
-        strategy_params: dict
+        strategy_params: dict,
+        timeframe: str = '1D',
+        stop_loss: float = 0
     ):
         """
         执行回测
@@ -55,6 +57,8 @@ class BacktestEngine:
             leverage: 杠杆倍数
             fee_rate: 手续费率
             strategy_params: 策略参数
+            timeframe: 时间粒度 ('1D' 或 '1H')
+            stop_loss: 止损比例 (0-1之间，0表示不启用)
         """
         try:
             # 更新状态为running
@@ -64,10 +68,26 @@ class BacktestEngine:
 
             # 1. 获取数据（优先缓存）
             self._emit_progress(run_id, 10, "正在获取历史数据...")
-            df = self._fetch_data_with_cache(symbol, start_date, end_date)
+            df = self._fetch_data_with_cache(symbol, start_date, end_date, timeframe)
 
-            if df.empty or len(df) < 180:
-                raise ValueError("数据不足，需要至少180天数据")
+            # 根据时间粒度检查数据量
+            if timeframe == '1H':
+                min_required = 180 * 24  # 小时线需要至少180天的数据（4320小时）
+                if df.empty or len(df) < min_required:
+                    actual_days = len(df) / 24 if len(df) > 0 else 0
+                    raise ValueError(f"数据不足。小时线需要至少{min_required}小时（180天）数据，当前仅{len(df)}小时（约{actual_days:.0f}天）。建议：①选择日线回测 ②缩短回测时间范围")
+            else:
+                if df.empty or len(df) < 180:
+                    raise ValueError(f"数据不足。日线需要至少180天数据，当前仅{len(df)}天。请缩短回测时间范围或选择更早的开始日期。")
+
+            # 调试：检查数据
+            print(f"\n[DEBUG] 数据获取完成:", flush=True)
+            print(f"  数据行数: {len(df)}", flush=True)
+            print(f"  日期范围: {df['date'].min()} 到 {df['date'].max()}", flush=True)
+            print(f"  价格范围: ${df['close'].min():.2f} - ${df['close'].max():.2f}", flush=True)
+            print(f"  数据列: {df.columns.tolist()}", flush=True)
+            print(f"  前3行:\n{df.head(3)}", flush=True)
+            print(f"  后3行:\n{df.tail(3)}", flush=True)
 
             # 2. 初始化检测器
             self._emit_progress(run_id, 20, "初始化市场检测器...")
@@ -75,13 +95,14 @@ class BacktestEngine:
                 short_period=strategy_params['periods']['short'],
                 medium_period=strategy_params['periods']['medium'],
                 long_period=strategy_params['periods']['long'],
-                super_long_period=strategy_params['periods']['super_long']
+                super_long_period=strategy_params['periods']['super_long'],
+                timeframe=timeframe
             )
 
             # 3. 执行交易模拟
             self._emit_progress(run_id, 30, "开始回测模拟...")
             trades, final_capital = self._simulate_trading(
-                df, detector, initial_capital, leverage, fee_rate, strategy_params, run_id
+                df, detector, initial_capital, leverage, fee_rate, strategy_params, run_id, stop_loss
             )
 
             # 4. 计算指标
@@ -101,13 +122,14 @@ class BacktestEngine:
 
         except Exception as e:
             # 错误处理
+            self.db.rollback()  # 回滚失败的事务
             run = self.db.query(BacktestRun).get(run_id)
             run.status = 'failed'
             self.db.commit()
             self._emit_error(run_id, str(e))
             raise
 
-    def _fetch_data_with_cache(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+    def _fetch_data_with_cache(self, symbol: str, start_date: date, end_date: date, timeframe: str = '1D') -> pd.DataFrame:
         """
         从缓存或API获取数据
 
@@ -115,10 +137,16 @@ class BacktestEngine:
             symbol: 交易对
             start_date: 开始日期
             end_date: 结束日期
+            timeframe: 时间粒度 ('1D' 或 '1H')
 
         Returns:
             pd.DataFrame: 价格数据
         """
+        # 小时线数据不使用缓存（缓存表不支持小时级时间戳）
+        if timeframe == '1H':
+            return self._fetch_hourly_data(symbol, start_date, end_date)
+
+        # 日线数据使用缓存
         # 检查缓存
         cached_df = self.cache_service.get_cached_data(symbol, start_date, end_date)
 
@@ -131,19 +159,25 @@ class BacktestEngine:
 
         # 获取缺失数据
         # 计算需要获取的天数范围
-        days = (end_date - start_date).days + 200  # 多获取一些以确保数据充足
+        backtest_days = (end_date - start_date).days
+        warmup_days = 200  # 预热数据（确保有足够数据计算指标）
+        days = backtest_days + warmup_days
+        print(f"[DEBUG] 日线数据获取: 回测{backtest_days}天 + 预热{warmup_days}天 = 共{days}天", flush=True)
+
         new_df = self.fetcher.fetch_history(symbol, timeframe='1D', days=days)
 
         # 转换timestamp为date
         if 'timestamp' in new_df.columns:
             new_df['date'] = pd.to_datetime(new_df['timestamp'], unit='ms').dt.date
 
-        # 筛选日期范围
-        new_df = new_df[(new_df['date'] >= start_date) & (new_df['date'] <= end_date)]
+        # 筛选回测日期范围（保留预热期）
+        warmup_start = start_date - timedelta(days=warmup_days)
+        new_df = new_df[(new_df['date'] >= warmup_start) & (new_df['date'] <= end_date)]
 
-        # 保存到缓存
+        # 保存到缓存（只保存回测期间的数据）
         if not new_df.empty:
-            self.cache_service.save_to_cache(symbol, new_df)
+            cache_df = new_df[new_df['date'] >= start_date].copy()
+            self.cache_service.save_to_cache(symbol, cache_df)
 
         # 合并缓存和新数据
         if cached_df.empty:
@@ -153,13 +187,54 @@ class BacktestEngine:
 
         return result_df.reset_index(drop=True)
 
+    def _fetch_hourly_data(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+        """
+        获取小时线数据（不使用缓存）
+
+        Args:
+            symbol: 交易对
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            pd.DataFrame: 价格数据
+        """
+        # 计算需要获取的天数
+        backtest_days = (end_date - start_date).days
+        warmup_days = 200  # 预热数据
+        days = backtest_days + warmup_days
+        days = min(days, 1500)  # 限制最多1500天
+
+        print(f"[DEBUG] 小时线数据获取: 回测{backtest_days}天 + 预热{warmup_days}天 = 共{days}天", flush=True)
+
+        # 直接从API获取
+        df = self.fetcher.fetch_history(symbol, timeframe='1H', days=days)
+
+        if df.empty:
+            return pd.DataFrame(columns=['timestamp', 'date', 'open', 'high', 'low', 'close', 'volume'])
+
+        # 转换timestamp为date（用于日期筛选）
+        if 'timestamp' in df.columns:
+            df['date'] = pd.to_datetime(df['timestamp'], unit='ms').dt.date
+
+        # 筛选日期范围（包含预热期）
+        warmup_start = start_date - timedelta(days=warmup_days)
+        df = df[(df['date'] >= warmup_start) & (df['date'] <= end_date)]
+
+        print(f"[DEBUG] 小时线数据: 获取{len(df)}条数据 (约{len(df)/24:.1f}天)", flush=True)
+
+        return df.reset_index(drop=True)
+
     def _simulate_trading(
         self, df: pd.DataFrame, detector: MarketDetectorV2,
         initial_capital: float, leverage: float, fee_rate: float,
-        strategy_params: dict, run_id: int
+        strategy_params: dict, run_id: int, stop_loss: float = 0
     ) -> tuple:
         """
         模拟交易执行
+
+        Args:
+            stop_loss: 止损比例 (0-1之间，0表示不启用)
 
         Returns:
             (trades, final_capital)
@@ -169,9 +244,16 @@ class BacktestEngine:
         entry_price = 0
         entry_date = None
         entry_score = 0
+        entry_capital = 0  # 买入时的资金（用于计算单笔盈亏）
+        borrowed = 0  # 使用杠杆时借入的资金
 
         trades = []
         total_days = len(df)
+
+        # 调试统计
+        max_score = 0
+        max_score_date = None
+        score_samples = []  # 采样记录一些分数
 
         for idx, row in df.iterrows():
             # 每10%更新进度
@@ -184,13 +266,26 @@ class BacktestEngine:
             if len(window_df) < 180:
                 continue  # 数据不足，跳过
 
-            # 市场检测
-            result = detector.detect(window_df)
-            details = result['details']
+            # 市场检测 - 使用get_detection_details获取详细信息
+            details = detector.get_detection_details(window_df)
             score = details['comprehensive_score']
 
             current_price = row['close']
             current_date = row['date']
+
+            # 调试：跟踪最高分数和采样
+            if score > max_score:
+                max_score = score
+                max_score_date = current_date
+
+            # 每30天采样一次
+            if idx % 30 == 0:
+                score_samples.append({
+                    'date': current_date,
+                    'score': score,
+                    'decel_penalty': details['deceleration_penalty'],
+                    'drawdown_penalty': details['drawdown_penalty']
+                })
 
             # 交易逻辑
             if position == 0:
@@ -199,26 +294,98 @@ class BacktestEngine:
                 decel_filter = strategy_params['deceleration_filter']
                 drawdown_filter = strategy_params['drawdown_filter']
 
+                # 注意：penalty是扣分值，范围是-3.0到0
+                # 所以过滤条件应该是"扣分不能太大"（即不能太负）
                 if (score >= buy_threshold and
-                    details['deceleration_penalty'] > decel_filter and
-                    details['drawdown_penalty'] > drawdown_filter):
+                    details['deceleration_penalty'] > -decel_filter and
+                    details['drawdown_penalty'] > -drawdown_filter):
                     # 买入
-                    capital, position = self._simulate_buy(capital, position, current_price, leverage, fee_rate)
+                    entry_capital = capital  # 记录买入前的资金（用于计算单笔盈亏）
+                    capital, position, borrowed = self._simulate_buy(capital, position, current_price, leverage, fee_rate)
                     entry_price = current_price
                     entry_date = current_date
                     entry_score = score
+                    print(f"[DEBUG] 买入信号触发: {current_date}, score={score:.2f}, price={current_price:.2f}, capital={entry_capital:.2f}, borrowed={borrowed:.2f}", flush=True)
+
+                # 调试：记录错过的机会（分数接近但未达到条件）
+                elif score >= buy_threshold * 0.8:  # 接近阈值
+                    print(f"[DEBUG] 接近买入但未触发: {current_date}, score={score:.2f} (需要>={buy_threshold}), "
+                          f"decel_penalty={details['deceleration_penalty']:.2f} (需要>-{decel_filter}), "
+                          f"drawdown_penalty={details['drawdown_penalty']:.2f} (需要>-{drawdown_filter})", flush=True)
 
             else:
-                # 持仓，检查卖出信号
+                # 持仓，检查风控和卖出信号
+
+                # 1. 计算当前未实现盈亏
+                unrealized_gross = position * current_price
+                unrealized_fee = unrealized_gross * fee_rate
+                unrealized_net = unrealized_gross - unrealized_fee
+                unrealized_capital = 0 + unrealized_net - borrowed  # 如果现在平仓的资金
+                unrealized_pnl = unrealized_capital - entry_capital
+                unrealized_return = unrealized_pnl / entry_capital if entry_capital > 0 else 0
+
+                # 2. 检查爆仓条件（亏损超过本金）
+                if unrealized_capital <= 0:
+                    # 爆仓：强制平仓，资金归零
+                    capital = 0
+                    position = 0
+                    borrowed = 0
+
+                    pnl = -entry_capital  # 本金全部亏损
+                    return_pct = -1.0  # -100%
+                    holding_days = (current_date - entry_date).days
+
+                    trades.append({
+                        'entry_date': entry_date,
+                        'entry_price': entry_price,
+                        'entry_score': entry_score,
+                        'exit_date': current_date,
+                        'exit_price': current_price,
+                        'exit_score': -999,  # 特殊标记：爆仓
+                        'pnl': pnl,
+                        'return_pct': return_pct,
+                        'holding_days': holding_days
+                    })
+
+                    print(f"[RISK] 爆仓！{current_date}, price={current_price:.2f}, loss={pnl:.2f}", flush=True)
+                    continue  # 跳过后续检查，资金归零后无法继续交易
+
+                # 3. 检查止损条件
+                if stop_loss > 0 and unrealized_return <= -stop_loss:
+                    # 触发止损：强制平仓
+                    capital, position = self._simulate_sell(capital, position, current_price, borrowed, fee_rate)
+                    borrowed = 0
+
+                    pnl = capital - entry_capital
+                    return_pct = pnl / entry_capital if entry_capital > 0 else 0
+                    holding_days = (current_date - entry_date).days
+
+                    trades.append({
+                        'entry_date': entry_date,
+                        'entry_price': entry_price,
+                        'entry_score': entry_score,
+                        'exit_date': current_date,
+                        'exit_price': current_price,
+                        'exit_score': -888,  # 特殊标记：止损
+                        'pnl': pnl,
+                        'return_pct': return_pct,
+                        'holding_days': holding_days
+                    })
+
+                    print(f"[RISK] 止损！{current_date}, price={current_price:.2f}, return={return_pct*100:.2f}%", flush=True)
+                    continue  # 已平仓，跳过后续检查
+
+                # 4. 检查正常卖出信号
                 sell_threshold = strategy_params['sell_threshold']
 
                 if score < sell_threshold:
                     # 卖出
-                    capital, position = self._simulate_sell(capital, position, current_price, fee_rate)
+                    capital, position = self._simulate_sell(capital, position, current_price, borrowed, fee_rate)
+                    borrowed = 0  # 已还清借款
 
-                    # 记录交易
-                    pnl = capital - initial_capital
-                    return_pct = (current_price / entry_price - 1) * leverage
+                    # 记录交易（单笔盈亏）
+                    pnl = capital - entry_capital  # 这笔交易的盈亏
+                    return_pct = pnl / entry_capital if entry_capital > 0 else 0  # 基于实际盈亏计算收益率
                     holding_days = (current_date - entry_date).days
 
                     trades.append({
@@ -241,10 +408,11 @@ class BacktestEngine:
         if position > 0:
             last_price = df.iloc[-1]['close']
             last_date = df.iloc[-1]['date']
-            capital, position = self._simulate_sell(capital, position, last_price, fee_rate)
+            capital, position = self._simulate_sell(capital, position, last_price, borrowed, fee_rate)
+            borrowed = 0  # 已还清借款
 
-            pnl = capital - initial_capital
-            return_pct = (last_price / entry_price - 1) * leverage
+            pnl = capital - entry_capital  # 单笔盈亏
+            return_pct = pnl / entry_capital if entry_capital > 0 else 0  # 基于实际盈亏计算收益率
             holding_days = (last_date - entry_date).days
 
             trades.append({
@@ -259,21 +427,38 @@ class BacktestEngine:
                 'holding_days': holding_days
             })
 
+        # 输出调试统计
+        print(f"\n[DEBUG] 回测统计:", flush=True)
+        print(f"  数据总天数: {total_days}", flush=True)
+        print(f"  最高分数: {max_score:.2f} (日期: {max_score_date})", flush=True)
+        print(f"  交易次数: {len(trades)}", flush=True)
+        print(f"  策略参数: buy_threshold={strategy_params['buy_threshold']}, "
+              f"decel_filter={strategy_params['deceleration_filter']}, "
+              f"drawdown_filter={strategy_params['drawdown_filter']}", flush=True)
+
+        print(f"\n[DEBUG] 分数采样 (每30天):", flush=True)
+        for sample in score_samples[-10:]:  # 显示最后10个采样
+            print(f"  {sample['date']}: score={sample['score']:.2f}, "
+                  f"decel={sample['decel_penalty']:.2f}, drawdown={sample['drawdown_penalty']:.2f}", flush=True)
+
         return trades, capital
 
     def _simulate_buy(self, capital: float, position: float, price: float, leverage: float, fee_rate: float) -> tuple:
         """
-        模拟买入
+        模拟买入（全仓，使用杠杆）
 
         Returns:
-            (new_capital, new_position)
+            (new_capital, new_position, borrowed_amount)
         """
         fee = capital * fee_rate
         usable = capital - fee
-        btc_amount = usable / price
-        return 0, btc_amount  # 全仓买入
+        # 使用杠杆：自有资金 + 借入资金
+        borrowed = usable * (leverage - 1)  # 借入的资金
+        total_value = usable + borrowed  # 总购买力
+        btc_amount = total_value / price
+        return 0, btc_amount, borrowed  # 全仓买入，资金清零，返回借入金额
 
-    def _simulate_sell(self, capital: float, position: float, price: float, fee_rate: float) -> tuple:
+    def _simulate_sell(self, capital: float, position: float, price: float, borrowed: float, fee_rate: float) -> tuple:
         """
         模拟卖出
 
@@ -283,7 +468,9 @@ class BacktestEngine:
         gross = position * price
         fee = gross * fee_rate
         net = gross - fee
-        return capital + net, 0
+        # 偿还借入的资金
+        final_capital = capital + net - borrowed
+        return final_capital, 0
 
     def _calculate_metrics(
         self, trades: List[dict], initial_capital: float,
@@ -314,7 +501,13 @@ class BacktestEngine:
         # 年化收益
         days = (end_date - start_date).days
         years = days / 365.25
-        annual_return = (1 + total_return) ** (1 / years) - 1 if years > 0 else 0
+        if years > 0 and total_return > -1:
+            annual_return = (1 + total_return) ** (1 / years) - 1
+        elif years > 0 and total_return <= -1:
+            # 亏损超过100%（爆仓），年化收益率为-100%
+            annual_return = -1.0
+        else:
+            annual_return = 0
 
         # 交易统计
         num_trades = len(trades)
@@ -361,15 +554,15 @@ class BacktestEngine:
                 current_losses = 0
 
         return {
-            'total_return': round(total_return, 4),
-            'annual_return': round(annual_return, 4),
-            'num_trades': num_trades,
-            'win_rate': round(win_rate, 4),
-            'max_drawdown': round(max_drawdown, 4),
-            'sharpe_ratio': round(sharpe_ratio, 4),
-            'avg_holding_days': round(avg_holding_days, 2),
-            'profit_loss_ratio': round(profit_loss_ratio, 4),
-            'max_consecutive_losses': max_consecutive_losses
+            'total_return': float(round(total_return, 4)),
+            'annual_return': float(round(annual_return, 4)),
+            'num_trades': int(num_trades),
+            'win_rate': float(round(win_rate, 4)),
+            'max_drawdown': float(round(max_drawdown, 4)),
+            'sharpe_ratio': float(round(sharpe_ratio, 4)),
+            'avg_holding_days': float(round(avg_holding_days, 2)),
+            'profit_loss_ratio': float(round(profit_loss_ratio, 4)),
+            'max_consecutive_losses': int(max_consecutive_losses)
         }
 
     def _save_results(self, run_id: int, trades: List[dict], metrics: dict, final_capital: float):

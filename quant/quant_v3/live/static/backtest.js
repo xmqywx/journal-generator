@@ -131,14 +131,30 @@ function getBacktestConfig() {
     }
 
     // Get capital and trading params
-    const initialCapital = parseFloat(document.getElementById('initialCapital').value);
-    const leverage = parseFloat(document.getElementById('leverage').value);
-    const feeRate = parseFloat(document.getElementById('feeRate').value) / 100; // Convert to decimal
+    const initialCapital = parseFloat(document.getElementById('initialCapital').value) || 2000;
+    const leverage = parseFloat(document.getElementById('leverage').value) || 3.0;
+    const feeRate = (parseFloat(document.getElementById('feeRate').value) || 0.04) / 100; // Convert to decimal
+
+    // Get risk management params
+    const timeframe = document.getElementById('timeframe').value;
+    const stopLossValue = document.getElementById('stopLoss').value;
+    const stopLoss = stopLossValue && !isNaN(parseFloat(stopLossValue))
+        ? parseFloat(stopLossValue) / 100
+        : 0; // Default to 0 (disabled) if empty or invalid
 
     // Get strategy params
     const strategyParams = {
-        buy_threshold: parseFloat(document.getElementById('buyThreshold').value),
-        sell_threshold: parseFloat(document.getElementById('sellThreshold').value)
+        buy_threshold: parseFloat(document.getElementById('buyThreshold').value) || 7.5,
+        sell_threshold: parseFloat(document.getElementById('sellThreshold').value) || 5.0,
+        // Add periods for MarketDetectorV2
+        periods: {
+            short: 20,
+            medium: 50,
+            long: 120,
+            super_long: 180
+        },
+        deceleration_filter: parseFloat(document.getElementById('decelerationFilter').value) || 3,
+        drawdown_filter: parseFloat(document.getElementById('drawdownFilter').value) || 3
     };
 
     return {
@@ -148,6 +164,8 @@ function getBacktestConfig() {
         initial_capital: initialCapital,
         leverage,
         fee_rate: feeRate,
+        timeframe,
+        stop_loss: stopLoss,
         strategy_params: strategyParams
     };
 }
@@ -285,7 +303,7 @@ function initChart() {
 
     chart = LightweightCharts.createChart(chartContainer, {
         width: chartContainer.clientWidth,
-        height: 500,
+        height: chartContainer.clientHeight,
         layout: {
             background: { color: '#ffffff' },
             textColor: '#333333',
@@ -310,9 +328,13 @@ function initChart() {
     // Responsive resize
     window.addEventListener('resize', () => {
         if (chart) {
-            chart.applyOptions({
-                width: chartContainer.clientWidth
-            });
+            const container = document.getElementById('chartContainer');
+            if (container) {
+                chart.applyOptions({
+                    width: container.clientWidth,
+                    height: container.clientHeight
+                });
+            }
         }
     });
 }
@@ -326,9 +348,18 @@ function renderChart(priceData, trades) {
     const chartContainer = document.getElementById('chartContainer');
     chartContainer.innerHTML = '';
 
+    // Debug: Check if LightweightCharts is available
+    if (typeof LightweightCharts === 'undefined') {
+        console.error('LightweightCharts is not loaded!');
+        chartContainer.innerHTML = '<div class="p-4 text-red-600">图表库加载失败，请刷新页面重试</div>';
+        return;
+    }
+
+    console.log('LightweightCharts version:', LightweightCharts.version);
+
     chart = LightweightCharts.createChart(chartContainer, {
         width: chartContainer.clientWidth,
-        height: 500,
+        height: chartContainer.clientHeight,
         layout: {
             background: { color: '#ffffff' },
             textColor: '#333333',
@@ -350,14 +381,34 @@ function renderChart(priceData, trades) {
         },
     });
 
-    // Add candlestick series
-    const candlestickSeries = chart.addCandlestickSeries({
-        upColor: '#26a69a',
-        downColor: '#ef5350',
-        borderVisible: false,
-        wickUpColor: '#26a69a',
-        wickDownColor: '#ef5350',
-    });
+    // Debug: Check available methods
+    console.log('Chart methods:', Object.keys(chart));
+    console.log('Has addCandlestickSeries:', typeof chart.addCandlestickSeries);
+
+    // Add candlestick series with version detection
+    let candlestickSeries;
+    if (typeof chart.addCandlestickSeries === 'function') {
+        candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a',
+            downColor: '#ef5350',
+            borderVisible: false,
+            wickUpColor: '#26a69a',
+            wickDownColor: '#ef5350',
+        });
+    } else if (typeof chart.addSeries === 'function') {
+        // Fallback for older API
+        candlestickSeries = chart.addSeries('candlestick', {
+            upColor: '#26a69a',
+            downColor: '#ef5350',
+            borderVisible: false,
+            wickUpColor: '#26a69a',
+            wickDownColor: '#ef5350',
+        });
+    } else {
+        console.error('No supported method to add candlestick series!');
+        chartContainer.innerHTML = '<div class="p-4 text-red-600">不支持的图表库版本，请联系技术支持</div>';
+        return;
+    }
 
     // Convert price data to TradingView format
     const chartData = priceData.map(candle => ({
@@ -404,15 +455,16 @@ function renderChart(priceData, trades) {
 }
 
 function displayMetrics(metrics) {
-    document.getElementById('metricTotalReturn').textContent = `${metrics.total_return.toFixed(2)}%`;
+    // 后端返回的是0-1的小数（如0.5表示50%），需要乘以100显示
+    document.getElementById('metricTotalReturn').textContent = `${(metrics.total_return * 100).toFixed(2)}%`;
     document.getElementById('metricTotalReturn').className = `text-2xl font-bold ${metrics.total_return >= 0 ? 'text-green-600' : 'text-red-600'}`;
 
-    document.getElementById('metricAnnualReturn').textContent = `${metrics.annual_return.toFixed(2)}%`;
+    document.getElementById('metricAnnualReturn').textContent = `${(metrics.annual_return * 100).toFixed(2)}%`;
     document.getElementById('metricAnnualReturn').className = `text-2xl font-bold ${metrics.annual_return >= 0 ? 'text-blue-600' : 'text-gray-600'}`;
 
     document.getElementById('metricNumTrades').textContent = metrics.num_trades;
-    document.getElementById('metricWinRate').textContent = `${metrics.win_rate.toFixed(2)}%`;
-    document.getElementById('metricMaxDrawdown').textContent = `${metrics.max_drawdown.toFixed(2)}%`;
+    document.getElementById('metricWinRate').textContent = `${(metrics.win_rate * 100).toFixed(2)}%`;
+    document.getElementById('metricMaxDrawdown').textContent = `${(metrics.max_drawdown * 100).toFixed(2)}%`;
     document.getElementById('metricSharpe').textContent = metrics.sharpe_ratio.toFixed(2);
     document.getElementById('metricAvgHolding').textContent = `${metrics.avg_holding_days.toFixed(1)}天`;
     document.getElementById('metricProfitLoss').textContent = metrics.profit_loss_ratio.toFixed(2);
@@ -425,7 +477,7 @@ function displayTrades(trades) {
     if (!trades || trades.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" class="px-4 py-8 text-center text-gray-500">暂无交易记录</td>
+                <td colspan="7" class="py-8 text-center text-gray-500">暂无交易</td>
             </tr>
         `;
         return;
@@ -435,16 +487,36 @@ function displayTrades(trades) {
         const row = document.createElement('tr');
         row.className = 'hover:bg-gray-50';
 
-        const returnPct = parseFloat(trade.return_pct);
-        const pnlClass = returnPct >= 0 ? 'text-green-600' : 'text-red-600';
+        // return_pct是0-1的小数，需要乘以100显示为百分比
+        const returnPct = parseFloat(trade.return_pct) * 100;
+        const pnl = parseFloat(trade.pnl);
+        const pnlClass = pnl >= 0 ? 'text-green-600' : 'text-red-600';
+
+        // 完整日期格式
+        const entryDate = new Date(trade.entry_date).toLocaleDateString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        const exitDate = new Date(trade.exit_date).toLocaleDateString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+
+        // 价格显示（根据价格大小决定小数位数）
+        const entryPrice = parseFloat(trade.entry_price);
+        const exitPrice = parseFloat(trade.exit_price);
+        const priceDecimals = entryPrice > 100 ? 2 : (entryPrice > 1 ? 4 : 6);
 
         row.innerHTML = `
-            <td class="px-4 py-3 text-sm">${new Date(trade.entry_date).toLocaleDateString('zh-CN')}</td>
-            <td class="px-4 py-3 text-sm text-right">$${parseFloat(trade.entry_price).toFixed(2)}</td>
-            <td class="px-4 py-3 text-sm">${new Date(trade.exit_date).toLocaleDateString('zh-CN')}</td>
-            <td class="px-4 py-3 text-sm text-right">$${parseFloat(trade.exit_price).toFixed(2)}</td>
-            <td class="px-4 py-3 text-sm text-right font-medium ${pnlClass}">${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%</td>
-            <td class="px-4 py-3 text-sm text-right">${trade.holding_days}天</td>
+            <td class="py-2 px-1 text-xs whitespace-nowrap">${entryDate}</td>
+            <td class="py-2 px-1 text-xs text-right whitespace-nowrap">$${entryPrice.toFixed(priceDecimals)}</td>
+            <td class="py-2 px-1 text-xs whitespace-nowrap">${exitDate}</td>
+            <td class="py-2 px-1 text-xs text-right whitespace-nowrap">$${exitPrice.toFixed(priceDecimals)}</td>
+            <td class="py-2 px-1 text-xs text-right font-medium ${pnlClass} whitespace-nowrap">${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%</td>
+            <td class="py-2 px-1 text-xs text-right font-medium ${pnlClass} whitespace-nowrap">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
+            <td class="py-2 px-1 text-xs text-center text-gray-600 whitespace-nowrap">${trade.holding_days}</td>
         `;
 
         tbody.appendChild(row);
@@ -476,6 +548,21 @@ async function loadBacktestResult(backtestId) {
         // Render chart
         if (priceData && priceData.length > 0) {
             renderChart(priceData, trades);
+        } else {
+            // Show error message if no price data
+            const chartContainer = document.getElementById('chartContainer');
+            chartContainer.innerHTML = `
+                <div class="flex items-center justify-center h-full">
+                    <div class="text-center p-8">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无价格数据</h3>
+                        <p class="text-sm text-gray-500">回测已完成，但无法加载K线图数据。</p>
+                        <p class="text-sm text-gray-500 mt-1">这可能是因为数据缓存中没有该交易对的历史数据。</p>
+                    </div>
+                </div>
+            `;
         }
 
         // Display metrics
@@ -486,15 +573,73 @@ async function loadBacktestResult(backtestId) {
         // Display trades
         displayTrades(trades);
 
-        // Show results section
-        document.getElementById('resultsSection').classList.remove('hidden');
+        // Hide welcome, show results section
+        const welcomeSection = document.getElementById('welcomeSection');
+        const resultsSection = document.getElementById('resultsSection');
+        if (welcomeSection) welcomeSection.classList.add('hidden');
+        resultsSection.classList.remove('hidden');
 
         // Scroll to results
-        document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+        resultsSection.scrollIntoView({ behavior: 'smooth' });
 
     } catch (error) {
         showError(error.message);
         console.error('Error loading backtest result:', error);
+    }
+}
+
+// Load backtest configuration to UI
+function loadBacktestConfig(backtest) {
+    try {
+        // 交易对
+        document.querySelectorAll('.symbol-card').forEach(card => {
+            card.classList.remove('selected');
+            if (card.dataset.symbol === backtest.symbol) {
+                card.classList.add('selected');
+            }
+        });
+
+        // 基本配置（直接从backtest对象获取）
+        document.getElementById('initialCapital').value = backtest.initial_capital || 2000;
+        document.getElementById('leverage').value = backtest.leverage || 3.0;
+        document.getElementById('feeRate').value = backtest.fee_rate || 0.04;
+
+        // 策略参数
+        if (backtest.strategy_params) {
+            document.getElementById('buyThreshold').value = backtest.strategy_params.buy_threshold || 7.5;
+            document.getElementById('sellThreshold').value = backtest.strategy_params.sell_threshold || 4.0;
+            document.getElementById('decelerationFilter').value = backtest.strategy_params.deceleration_filter || 3.0;
+            document.getElementById('drawdownFilter').value = backtest.strategy_params.drawdown_filter || 3.0;
+        }
+
+        // 时间范围
+        if (backtest.start_date && backtest.end_date) {
+            const start = new Date(backtest.start_date);
+            const end = new Date(backtest.end_date);
+            const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+
+            // 选择对应的时间范围
+            const timeRangeRadios = document.querySelectorAll('input[name="timeRange"]');
+            let matched = false;
+            timeRangeRadios.forEach(radio => {
+                if (radio.value === String(days)) {
+                    radio.checked = true;
+                    matched = true;
+                }
+            });
+
+            if (!matched) {
+                // 自定义时间范围
+                document.querySelector('input[name="timeRange"][value="custom"]').checked = true;
+                document.getElementById('startDate').value = backtest.start_date;
+                document.getElementById('endDate').value = backtest.end_date;
+                document.getElementById('customDateRange').style.display = 'block';
+            }
+        }
+
+        console.log('Configuration loaded from backtest:', backtest.id);
+    } catch (error) {
+        console.error('Error loading backtest configuration:', error);
     }
 }
 
@@ -543,9 +688,11 @@ function displayHistory(backtests) {
 
 function createHistoryItem(backtest) {
     const div = document.createElement('div');
-    div.className = 'bg-white border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer';
+    div.className = 'history-card';
+    div.dataset.symbol = backtest.symbol.split('-')[0]; // 存储交易对用于筛选
 
-    const totalReturn = backtest.total_return || 0;
+    // total_return是0-1的小数，需要乘以100显示为百分比
+    const totalReturn = (backtest.total_return || 0) * 100;
     const returnClass = totalReturn >= 0 ? 'text-green-600' : 'text-red-600';
 
     const statusClass = backtest.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -553,52 +700,55 @@ function createHistoryItem(backtest) {
                        backtest.status === 'failed' ? 'bg-red-100 text-red-800' :
                        'bg-gray-100 text-gray-800';
 
+    // 从backtest对象直接获取配置（后端已返回）
+    const leverage = backtest.leverage || 1;
+    const buyThreshold = backtest.strategy_params?.buy_threshold || 0;
+    const sellThreshold = backtest.strategy_params?.sell_threshold || 0;
+
+    // 格式化时间范围
+    const startDate = new Date(backtest.start_date).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const endDate = new Date(backtest.end_date).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
     div.innerHTML = `
         <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center space-x-3">
-                <span class="text-lg font-semibold">${backtest.symbol}</span>
-                <span class="px-2 py-1 text-xs rounded ${statusClass}">${backtest.status}</span>
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-bold">${backtest.symbol}</span>
+                <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${backtest.status}</span>
             </div>
-            <div class="flex items-center space-x-2">
-                <button class="view-btn p-2 text-gray-600 hover:text-blue-600 transition-colors" data-id="${backtest.id}" title="查看详情">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                    </svg>
-                </button>
-                <button class="delete-btn p-2 text-gray-600 hover:text-red-600 transition-colors" data-id="${backtest.id}" title="删除">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                    </svg>
-                </button>
-            </div>
+            <button class="delete-btn p-1 text-gray-400 hover:text-red-600 transition-colors" data-id="${backtest.id}" title="删除">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </button>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <div>
-                <span class="text-gray-500">时间范围:</span>
-                <p class="font-medium">${backtest.start_date} ~ ${backtest.end_date}</p>
+        <div class="space-y-1 text-xs">
+            <div class="flex justify-between">
+                <span class="text-gray-500">收益率</span>
+                <span class="font-bold ${returnClass}">${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%</span>
             </div>
-            <div>
-                <span class="text-gray-500">收益率:</span>
-                <p class="font-medium ${returnClass}">${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%</p>
+            <div class="flex justify-between">
+                <span class="text-gray-500">交易数</span>
+                <span class="font-medium">${backtest.num_trades || 0}</span>
             </div>
-            <div>
-                <span class="text-gray-500">交易次数:</span>
-                <p class="font-medium">${backtest.num_trades || 0}</p>
+            <div class="flex justify-between">
+                <span class="text-gray-500">时间范围</span>
+                <span class="font-medium text-xs">${startDate} ~ ${endDate}</span>
             </div>
-            <div>
-                <span class="text-gray-500">创建时间:</span>
-                <p class="font-medium">${new Date(backtest.created_at).toLocaleDateString('zh-CN')}</p>
+            <div class="flex justify-between">
+                <span class="text-gray-500">杠杆</span>
+                <span class="font-medium">${leverage}x</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-500">阈值</span>
+                <span class="font-medium">${buyThreshold.toFixed(1)}/${sellThreshold.toFixed(1)}</span>
+            </div>
+            <div class="text-gray-400 text-xs pt-1 border-t border-gray-100">
+                ${new Date(backtest.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </div>
         </div>
     `;
 
     // Add event listeners
-    div.querySelector('.view-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        loadBacktestResult(backtest.id);
-    });
-
     div.querySelector('.delete-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         confirmDelete(backtest.id);
@@ -606,6 +756,8 @@ function createHistoryItem(backtest) {
 
     div.addEventListener('click', () => {
         loadBacktestResult(backtest.id);
+        loadBacktestConfig(backtest);
+        closeHistoryDrawer();
     });
 
     return div;
@@ -642,7 +794,60 @@ document.getElementById('refreshHistory').addEventListener('click', loadHistory)
 // Page Load
 // ====================
 
+// ====================
+// History Drawer Control
+// ====================
+
+function openHistoryDrawer() {
+    const drawer = document.getElementById('historyDrawer');
+    const overlay = document.getElementById('historyOverlay');
+    const toggleBtn = document.getElementById('toggleHistory');
+
+    drawer.classList.remove('translate-x-full');
+    overlay.classList.remove('hidden');
+    toggleBtn.classList.add('hidden');
+}
+
+function closeHistoryDrawer() {
+    const drawer = document.getElementById('historyDrawer');
+    const overlay = document.getElementById('historyOverlay');
+    const toggleBtn = document.getElementById('toggleHistory');
+
+    drawer.classList.add('translate-x-full');
+    overlay.classList.add('hidden');
+    toggleBtn.classList.remove('hidden');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initChart();
     loadHistory();
+
+    // History drawer controls
+    document.getElementById('toggleHistory').addEventListener('click', openHistoryDrawer);
+    document.getElementById('closeHistory').addEventListener('click', closeHistoryDrawer);
+    document.getElementById('historyOverlay').addEventListener('click', closeHistoryDrawer);
+    document.getElementById('refreshHistory').addEventListener('click', loadHistory);
+
+    // Symbol filter buttons
+    document.querySelectorAll('.symbol-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Update active button
+            document.querySelectorAll('.symbol-filter-btn').forEach(b => {
+                b.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                b.classList.add('bg-white', 'text-gray-600', 'border-gray-300');
+            });
+            btn.classList.remove('bg-white', 'text-gray-600', 'border-gray-300');
+            btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+
+            // Filter history cards
+            const filter = btn.dataset.filter;
+            document.querySelectorAll('.history-card').forEach(card => {
+                if (filter === 'all' || card.dataset.symbol === filter) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+    });
 });

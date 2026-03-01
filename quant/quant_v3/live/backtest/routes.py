@@ -87,9 +87,11 @@ def register_socketio_handlers(socketio):
 
             # Validate numeric values
             try:
-                initial_capital = float(data['initial_capital'])
-                leverage = float(data['leverage'])
-                fee_rate = float(data['fee_rate'])
+                initial_capital = float(data.get('initial_capital') or 2000)
+                leverage = float(data.get('leverage') or 3.0)
+                fee_rate = float(data.get('fee_rate') or 0.0004)
+                timeframe = data.get('timeframe') or '1D'  # 默认日线
+                stop_loss = float(data.get('stop_loss') or 0)  # 默认不启用止损
 
                 if initial_capital <= 0:
                     emit('backtest_error', {'error': '初始资金必须大于0'})
@@ -99,6 +101,12 @@ def register_socketio_handlers(socketio):
                     return
                 if fee_rate < 0 or fee_rate > 1:
                     emit('backtest_error', {'error': '手续费率必须在0到1之间'})
+                    return
+                if timeframe not in ['1D', '1H']:
+                    emit('backtest_error', {'error': '时间粒度必须是1D或1H'})
+                    return
+                if stop_loss < 0 or stop_loss > 1:
+                    emit('backtest_error', {'error': '止损比例必须在0到1之间'})
                     return
             except (ValueError, TypeError) as e:
                 emit('backtest_error', {'error': f'数值参数错误: {str(e)}'})
@@ -154,7 +162,9 @@ def register_socketio_handlers(socketio):
                         initial_capital=initial_capital,
                         leverage=leverage,
                         fee_rate=fee_rate,
-                        strategy_params=strategy_params
+                        strategy_params=strategy_params,
+                        timeframe=timeframe,
+                        stop_loss=stop_loss
                     )
                 except Exception as e:
                     print(f"回测执行错误: {str(e)}")
@@ -293,6 +303,7 @@ def get_backtest_history():
                 'initial_capital': float(run.initial_capital),
                 'leverage': float(run.leverage),
                 'fee_rate': float(run.fee_rate),
+                'strategy_params': run.strategy_params,
                 'status': run.status,
                 'created_at': run.created_at.isoformat(),
                 'completed_at': run.completed_at.isoformat() if run.completed_at else None,
