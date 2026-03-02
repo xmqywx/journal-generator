@@ -321,6 +321,7 @@ class BacktestEngine:
 
                     # 买入
                     entry_capital = capital  # 记录买入前的资金（用于计算单笔盈亏）
+                    original_entry_capital = capital  # 保存原始成本，用于计算收益率
                     capital, position, borrowed = self._simulate_buy(capital, position, current_price, leverage, fee_rate)
                     entry_price = current_price
                     entry_date = current_date
@@ -382,13 +383,14 @@ class BacktestEngine:
                     peak_price = 0
                     continue  # 跳过后续检查，资金归零后无法继续交易
 
-                # 3. 准备持仓信息
+                # 3. 准备持仓信息（包含实际资金盈亏百分比）
                 position_info = {
                     'entry_price': entry_price,
                     'current_price': current_price,
                     'peak_price': peak_price,
                     'entry_capital': entry_capital,
-                    'score': score
+                    'score': score,
+                    'actual_profit_pct': unrealized_return * 100  # 实际资金盈亏百分比（已考虑杠杆）
                 }
 
                 # 4. 使用自适应策略检查卖出
@@ -449,11 +451,11 @@ class BacktestEngine:
                     position = keep_position
                     borrowed -= repay_borrowed
 
-                    # 计算这部分的盈亏
+                    # 计算这部分的盈亏（使用原始成本计算收益率）
                     partial_pnl = capital_from_sell - (entry_capital * sell_ratio)
-                    partial_return = partial_pnl / (entry_capital * sell_ratio) if entry_capital > 0 else 0
+                    partial_return = partial_pnl / (original_entry_capital * sell_ratio) if original_entry_capital > 0 else 0
 
-                    # 更新剩余仓位的成本基础
+                    # 更新剩余仓位的成本基础（用于计算盈亏，不影响收益率）
                     entry_capital = entry_capital * (1 - sell_ratio)
 
                     trades.append({

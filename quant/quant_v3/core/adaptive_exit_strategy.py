@@ -82,44 +82,47 @@ class AdaptiveExitStrategy:
         score = position_info['score']
 
         # 计算盈亏
-        profit_pct = (current_price - entry_price) / entry_price * 100
+        price_change_pct = (current_price - entry_price) / entry_price * 100
         drawback_from_peak = (peak_price - current_price) / peak_price * 100 if peak_price > 0 else 0
 
-        # 1. 止损（最高优先级 - 风险控制）
-        if profit_pct <= -strategy['stop_loss_pct']:
+        # 使用实际资金盈亏百分比（考虑杠杆影响）
+        actual_profit_pct = position_info.get('actual_profit_pct', price_change_pct)
+
+        # 1. 止损（最高优先级 - 风险控制）使用实际资金亏损
+        if actual_profit_pct <= -strategy['stop_loss_pct']:
             return {
                 'action': 'SELL_ALL',
                 'sell_ratio': 1.0,
-                'reason': f'触发止损（亏损{abs(profit_pct):.1f}%）'
+                'reason': f'触发止损（资金亏损{abs(actual_profit_pct):.1f}%）'
             }
 
-        # 2. 快速锁定利润（仅HIGH型）
+        # 2. 快速锁定利润（仅HIGH型）- 基于价格涨幅
         quick_lock = strategy.get('quick_profit_lock')
         if quick_lock:
-            if profit_pct >= quick_lock['trigger_pct']:
+            if price_change_pct >= quick_lock['trigger_pct']:
                 return {
                     'action': 'SELL_PARTIAL',
                     'sell_ratio': quick_lock['sell_ratio'],
-                    'reason': f'高波动币种快速锁定利润（盈利{profit_pct:.1f}%）'
+                    'reason': f'高波动币种快速锁定利润（价格涨{price_change_pct:.1f}%）'
                 }
 
-        # 3. 分段止盈
+        # 3. 分段止盈 - 基于价格涨幅
         for level in strategy['profit_protection']:
-            if profit_pct >= level['profit_pct']:
+            if price_change_pct >= level['profit_pct']:
                 if drawback_from_peak >= level['drawback_pct']:
-                    if profit_pct < 50:
+                    if price_change_pct < 50:
                         # 中小盈利：部分卖出
                         return {
                             'action': 'SELL_PARTIAL',
                             'sell_ratio': 0.5,
-                            'reason': f'盈利{profit_pct:.1f}%，从峰值回撤{drawback_from_peak:.1f}%，部分止盈'
+                            'reason': f'价格涨{price_change_pct:.1f}%，从峰值回撤{drawback_from_peak:.1f}%，部分止盈'
                         }
                     else:
                         # 大盈利：全部卖出
                         return {
                             'action': 'SELL_ALL',
                             'sell_ratio': 1.0,
-                            'reason': f'盈利{profit_pct:.1f}%，从峰值回撤{drawback_from_peak:.1f}%，全部止盈'
+                            'reason': f'价格涨{price_change_pct:.1f}%，从峰值回撤{drawback_from_peak:.1f}%，全部止盈'
                         }
 
         # 4. 评分卖出
