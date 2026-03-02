@@ -654,36 +654,74 @@ function loadBacktestConfig(backtest) {
 // History Management
 // ====================
 
-async function loadHistory() {
+let currentSymbolFilter = null; // Track current symbol filter
+
+async function loadHistory(symbol = null) {
     try {
-        const response = await fetch('/api/backtest/history');
+        // Build query params
+        const params = new URLSearchParams({
+            page: 1,
+            per_page: 100 // Increase to show more records
+        });
+
+        // Add symbol filter if provided
+        if (symbol) {
+            params.append('symbol', symbol);
+            currentSymbolFilter = symbol;
+        } else {
+            currentSymbolFilter = null;
+        }
+
+        const response = await fetch(`/api/backtest/history?${params}`);
         const data = await response.json();
 
         if (data.error) {
             throw new Error(data.error);
         }
 
-        displayHistory(data.runs || []);
+        displayHistory(data.runs || [], symbol);
     } catch (error) {
         showError('加载历史记录失败: ' + error.message);
         console.error('Error loading history:', error);
     }
 }
 
-function displayHistory(backtests) {
+function displayHistory(backtests, filterSymbol = null) {
     const historyList = document.getElementById('historyList');
     historyList.innerHTML = '';
 
-    if (!backtests || backtests.length === 0) {
-        historyList.innerHTML = `
-            <div class="text-center py-12 text-gray-500">
-                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+    // Add filter indicator if filtering by symbol
+    if (filterSymbol) {
+        const filterIndicator = document.createElement('div');
+        filterIndicator.className = 'mb-3 px-3 py-2 bg-blue-50 rounded-lg flex items-center justify-between';
+        filterIndicator.innerHTML = `
+            <div class="flex items-center gap-2 text-sm text-blue-700">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
                 </svg>
-                <p>暂无回测记录</p>
-                <p class="text-sm mt-2">开始第一次回测吧！</p>
+                <span>筛选: ${filterSymbol}</span>
             </div>
+            <button id="clearFilter" class="text-sm text-blue-600 hover:text-blue-800">清除筛选</button>
         `;
+        historyList.appendChild(filterIndicator);
+
+        // Add event listener to clear filter button
+        filterIndicator.querySelector('#clearFilter').addEventListener('click', () => {
+            loadHistory(); // Reload without filter
+        });
+    }
+
+    if (!backtests || backtests.length === 0) {
+        const emptyMessage = document.createElement('div');
+        emptyMessage.className = 'text-center py-12 text-gray-500';
+        emptyMessage.innerHTML = `
+            <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p>${filterSymbol ? `无 ${filterSymbol} 回测记录` : '暂无回测记录'}</p>
+            <p class="text-sm mt-2">${filterSymbol ? '点击清除筛选查看所有记录' : '开始第一次回测吧！'}</p>
+        `;
+        historyList.appendChild(emptyMessage);
         return;
     }
 
@@ -719,7 +757,7 @@ function createHistoryItem(backtest) {
     div.innerHTML = `
         <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-2">
-                <span class="text-sm font-bold">${backtest.symbol}</span>
+                <span class="symbol-filter-link text-sm font-bold cursor-pointer hover:text-blue-600 transition-colors" title="点击筛选此交易对">${backtest.symbol}</span>
                 <span class="px-1.5 py-0.5 text-xs rounded ${statusClass}">${backtest.status}</span>
             </div>
             <button class="delete-btn p-1 text-gray-400 hover:text-red-600 transition-colors" data-id="${backtest.id}" title="删除">
@@ -763,6 +801,12 @@ function createHistoryItem(backtest) {
     div.querySelector('.delete-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         confirmDelete(backtest.id);
+    });
+
+    // Add symbol filter functionality
+    div.querySelector('.symbol-filter-link').addEventListener('click', (e) => {
+        e.stopPropagation();
+        loadHistory(backtest.symbol);
     });
 
     div.addEventListener('click', () => {
@@ -837,7 +881,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggleHistory').addEventListener('click', openHistoryDrawer);
     document.getElementById('closeHistory').addEventListener('click', closeHistoryDrawer);
     document.getElementById('historyOverlay').addEventListener('click', closeHistoryDrawer);
-    document.getElementById('refreshHistory').addEventListener('click', loadHistory);
+    document.getElementById('refreshHistory').addEventListener('click', () => {
+        // Refresh with current filter
+        loadHistory(currentSymbolFilter);
+    });
 
     // Symbol filter buttons
     document.querySelectorAll('.symbol-filter-btn').forEach(btn => {
@@ -850,15 +897,15 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.remove('bg-white', 'text-gray-600', 'border-gray-300');
             btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
 
-            // Filter history cards
+            // Use API-based filtering instead of client-side filtering
             const filter = btn.dataset.filter;
-            document.querySelectorAll('.history-card').forEach(card => {
-                if (filter === 'all' || card.dataset.symbol === filter) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
+            if (filter === 'all') {
+                loadHistory(); // Load all records
+            } else {
+                // Convert filter format (e.g., 'BTC' -> 'BTCUSDT')
+                const symbol = filter + 'USDT';
+                loadHistory(symbol);
+            }
         });
     });
 });

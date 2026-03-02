@@ -249,6 +249,7 @@ def get_backtest_history():
         - page: 页码（从1开始，默认1）
         - per_page: 每页数量（默认20，最大100）
         - status: 筛选状态（可选：pending, running, completed, failed, cancelled）
+        - symbol: 筛选交易对（可选，如：BTCUSDT）
 
     Returns:
         {
@@ -265,6 +266,7 @@ def get_backtest_history():
         page = request.args.get('page', 1, type=int)
         per_page = min(request.args.get('per_page', 20, type=int), 100)
         status_filter = request.args.get('status', None)
+        symbol_filter = request.args.get('symbol', None)
 
         if page < 1:
             return jsonify({'error': 'page必须大于等于1'}), 400
@@ -282,6 +284,10 @@ def get_backtest_history():
                     'error': f'无效的status值，必须是: {", ".join(valid_statuses)}'
                 }), 400
             query = query.filter(BacktestRun.status == status_filter)
+
+        # Apply symbol filter
+        if symbol_filter:
+            query = query.filter(BacktestRun.symbol == symbol_filter)
 
         # Get total count
         total = query.count()
