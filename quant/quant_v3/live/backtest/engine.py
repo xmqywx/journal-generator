@@ -104,7 +104,7 @@ class BacktestEngine:
             # 3. 执行交易模拟
             self._emit_progress(run_id, 30, "开始回测模拟...")
             trades, final_capital = self._simulate_trading(
-                df, detector, initial_capital, leverage, fee_rate, strategy_params, run_id, stop_loss
+                df, detector, initial_capital, leverage, fee_rate, strategy_params, run_id, symbol, stop_loss
             )
 
             # 4. 计算指标
@@ -230,12 +230,13 @@ class BacktestEngine:
     def _simulate_trading(
         self, df: pd.DataFrame, detector: MarketDetectorV2,
         initial_capital: float, leverage: float, fee_rate: float,
-        strategy_params: dict, run_id: int, stop_loss: float = 0
+        strategy_params: dict, run_id: int, symbol: str = None, stop_loss: float = 0
     ) -> tuple:
         """
         模拟交易执行
 
         Args:
+            symbol: 交易对符号（用于波动率检测）
             stop_loss: 止损比例 (0-1之间，0表示不启用)
 
         Returns:
@@ -309,7 +310,7 @@ class BacktestEngine:
                     details['drawdown_penalty'] > -drawdown_filter):
                     # 买入前检测波动率
                     try:
-                        vol_info = vol_detector.calculate_volatility(window_df)
+                        vol_info = vol_detector.calculate_volatility(window_df, symbol=symbol)
                         vol_level = vol_info['volatility_level']
                         print(f"[VOL] {current_date} 波动率检测: {vol_level}, "
                               f"日波动{vol_info['daily_volatility']:.2%}, "
