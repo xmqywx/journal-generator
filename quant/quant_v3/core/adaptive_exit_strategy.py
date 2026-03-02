@@ -85,7 +85,15 @@ class AdaptiveExitStrategy:
         profit_pct = (current_price - entry_price) / entry_price * 100
         drawback_from_peak = (peak_price - current_price) / peak_price * 100 if peak_price > 0 else 0
 
-        # 1. 快速锁定利润（仅HIGH型）
+        # 1. 止损（最高优先级 - 风险控制）
+        if profit_pct <= -strategy['stop_loss_pct']:
+            return {
+                'action': 'SELL_ALL',
+                'sell_ratio': 1.0,
+                'reason': f'触发止损（亏损{abs(profit_pct):.1f}%）'
+            }
+
+        # 2. 快速锁定利润（仅HIGH型）
         quick_lock = strategy.get('quick_profit_lock')
         if quick_lock:
             if profit_pct >= quick_lock['trigger_pct']:
@@ -95,7 +103,7 @@ class AdaptiveExitStrategy:
                     'reason': f'高波动币种快速锁定利润（盈利{profit_pct:.1f}%）'
                 }
 
-        # 2. 分段止盈
+        # 3. 分段止盈
         for level in strategy['profit_protection']:
             if profit_pct >= level['profit_pct']:
                 if drawback_from_peak >= level['drawback_pct']:
@@ -114,20 +122,12 @@ class AdaptiveExitStrategy:
                             'reason': f'盈利{profit_pct:.1f}%，从峰值回撤{drawback_from_peak:.1f}%，全部止盈'
                         }
 
-        # 3. 评分卖出
+        # 4. 评分卖出
         if score < strategy['sell_threshold']:
             return {
                 'action': 'SELL_ALL',
                 'sell_ratio': 1.0,
                 'reason': f'评分{score:.2f}低于阈值{strategy["sell_threshold"]}'
-            }
-
-        # 4. 止损
-        if profit_pct <= -strategy['stop_loss_pct']:
-            return {
-                'action': 'SELL_ALL',
-                'sell_ratio': 1.0,
-                'reason': f'触发止损（亏损{abs(profit_pct):.1f}%）'
             }
 
         # 5. 持有
