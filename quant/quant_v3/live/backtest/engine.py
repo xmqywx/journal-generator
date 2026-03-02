@@ -14,6 +14,8 @@ from typing import Optional, Dict, List
 
 from data.fetcher import BinanceFetcher
 from quant_v3.core.market_detector_v2 import MarketDetectorV2
+from quant_v3.core.volatility_detector import VolatilityDetector
+from quant_v3.core.adaptive_exit_strategy import AdaptiveExitStrategy
 from quant_v3.live.backtest.cache_service import CacheService
 from quant_v3.live.backtest.database import BacktestRun, BacktestResult, BacktestTrade
 
@@ -247,6 +249,12 @@ class BacktestEngine:
         entry_capital = 0  # 买入时的资金（用于计算单笔盈亏）
         borrowed = 0  # 使用杠杆时借入的资金
 
+        # 波动率检测和自适应卖出
+        vol_detector = VolatilityDetector()
+        exit_strategy = AdaptiveExitStrategy()
+        vol_level = None  # 当前持仓的波动率类型
+        peak_price = 0  # 持仓期间最高价
+
         trades = []
         total_days = len(df)
 
@@ -299,13 +307,26 @@ class BacktestEngine:
                 if (score >= buy_threshold and
                     details['deceleration_penalty'] > -decel_filter and
                     details['drawdown_penalty'] > -drawdown_filter):
+                    # 买入前检测波动率
+                    try:
+                        vol_info = vol_detector.calculate_volatility(window_df)
+                        vol_level = vol_info['volatility_level']
+                        print(f"[VOL] {current_date} 波动率检测: {vol_level}, "
+                              f"日波动{vol_info['daily_volatility']:.2%}, "
+                              f"周波动{vol_info['weekly_volatility']:.2%}", flush=True)
+                    except Exception as e:
+                        print(f"[VOL] 波动率检测失败: {e}, 使用默认MODERATE", flush=True)
+                        vol_level = 'MODERATE'
+
                     # 买入
                     entry_capital = capital  # 记录买入前的资金（用于计算单笔盈亏）
                     capital, position, borrowed = self._simulate_buy(capital, position, current_price, leverage, fee_rate)
                     entry_price = current_price
                     entry_date = current_date
                     entry_score = score
-                    print(f"[DEBUG] 买入信号触发: {current_date}, score={score:.2f}, price={current_price:.2f}, capital={entry_capital:.2f}, borrowed={borrowed:.2f}", flush=True)
+                    peak_price = current_price  # 初始化峰值价格
+                    print(f"[DEBUG] 买入信号触发: {current_date}, score={score:.2f}, price={current_price:.2f}, "
+                          f"vol_level={vol_level}, capital={entry_capital:.2f}, borrowed={borrowed:.2f}", flush=True)
 
                 # 调试：记录错过的机会（分数接近但未达到条件）
                 elif score >= buy_threshold * 0.8:  # 接近阈值
@@ -315,6 +336,10 @@ class BacktestEngine:
 
             else:
                 # 持仓，检查风控和卖出信号
+
+                # 更新峰值价格
+                if current_price > peak_price:
+                    peak_price = current_price
 
                 # 1. 计算当前未实现盈亏
                 unrealized_gross = position * current_price
