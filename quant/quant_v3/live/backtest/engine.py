@@ -405,7 +405,8 @@ class BacktestEngine:
                     borrowed = 0
 
                     pnl = capital - entry_capital
-                    return_pct = pnl / entry_capital if entry_capital > 0 else 0
+                    # 使用original_entry_capital计算收益率，确保一致性
+                    return_pct = pnl / original_entry_capital if original_entry_capital > 0 else 0
                     holding_days = (current_date - entry_date).days
 
                     trades.append({
@@ -486,7 +487,8 @@ class BacktestEngine:
             borrowed = 0  # 已还清借款
 
             pnl = capital - entry_capital  # 单笔盈亏
-            return_pct = pnl / entry_capital if entry_capital > 0 else 0  # 基于实际盈亏计算收益率
+            # 使用original_entry_capital计算收益率
+            return_pct = pnl / original_entry_capital if original_entry_capital > 0 else 0
             holding_days = (last_date - entry_date).days
 
             trades.append({
