@@ -477,7 +477,7 @@ function displayTrades(trades) {
     if (!trades || trades.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="py-8 text-center text-gray-500">暂无交易</td>
+                <td colspan="8" class="py-8 text-center text-gray-500">暂无交易</td>
             </tr>
         `;
         return;
@@ -509,6 +509,12 @@ function displayTrades(trades) {
         const exitPrice = parseFloat(trade.exit_price);
         const priceDecimals = entryPrice > 100 ? 2 : (entryPrice > 1 ? 4 : 6);
 
+        // Format volatility type and partial sell display
+        let typeDisplay = trade.volatility_level || '-';
+        if (trade.is_partial && trade.sell_ratio) {
+            typeDisplay += ` (${(trade.sell_ratio * 100).toFixed(0)}%)`;
+        }
+
         row.innerHTML = `
             <td class="py-2 px-1 text-xs whitespace-nowrap">${entryDate}</td>
             <td class="py-2 px-1 text-xs text-right whitespace-nowrap">$${entryPrice.toFixed(priceDecimals)}</td>
@@ -517,6 +523,7 @@ function displayTrades(trades) {
             <td class="py-2 px-1 text-xs text-right font-medium ${pnlClass} whitespace-nowrap">${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%</td>
             <td class="py-2 px-1 text-xs text-right font-medium ${pnlClass} whitespace-nowrap">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
             <td class="py-2 px-1 text-xs text-center text-gray-600 whitespace-nowrap">${trade.holding_days}</td>
+            <td class="py-2 px-1 text-xs text-gray-600 whitespace-nowrap" title="${trade.exit_reason || ''}">${typeDisplay}</td>
         `;
 
         tbody.appendChild(row);
