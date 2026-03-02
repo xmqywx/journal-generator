@@ -479,6 +479,11 @@ def get_backtest_trades(run_id):
                 'pnl': float(trade.pnl) if trade.pnl else None,
                 'return_pct': float(trade.return_pct) if trade.return_pct else None,
                 'holding_days': trade.holding_days,
+                # 自适应策略新增字段
+                'exit_reason': trade.exit_reason if hasattr(trade, 'exit_reason') else None,
+                'volatility_level': trade.volatility_level if hasattr(trade, 'volatility_level') else None,
+                'is_partial': trade.is_partial if hasattr(trade, 'is_partial') else False,
+                'sell_ratio': float(trade.sell_ratio) if hasattr(trade, 'sell_ratio') and trade.sell_ratio else 1.0,
             }
             for trade in trades
         ]

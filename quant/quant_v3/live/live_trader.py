@@ -69,6 +69,7 @@ class LiveTrader:
             medium_period=self.medium_period,
             long_period=self.long_period,
             super_long_period=self.super_long_period,
+            timeframe='1H'  # 实盘使用小时线数据
         )
 
         # 数据获取器

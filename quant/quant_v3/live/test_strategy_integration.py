@@ -261,11 +261,11 @@ def test_btc_stable():
 
     try:
         # 创建回测运行记录
-        # 使用最近的数据（当前日期往前推，确保有足够的预热数据）
+        # 使用与原始回测相同的时间范围以便公平比较
         run = BacktestRun(
             symbol='BTCUSDT',
-            start_date=date(2025, 1, 1),  # 使用2025年的数据
-            end_date=date(2026, 3, 1),
+            start_date=date(2023, 3, 3),  # 与原始回测相同的开始日期
+            end_date=date(2026, 3, 2),
             initial_capital=Decimal('100000.00'),
             leverage=Decimal('2.0'),
             fee_rate=Decimal('0.0004'),

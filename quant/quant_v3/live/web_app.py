@@ -1,9 +1,8 @@
 """
 v3量化系统 - Web界面
 """
-import eventlet
-eventlet.monkey_patch()
-
+# Note: eventlet has compatibility issues with Python 3.14
+# Using threading mode instead
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 from live_trader import LiveTrader
@@ -13,8 +12,8 @@ from datetime import datetime
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key')
 
-# Initialize SocketIO with CORS support
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# Initialize SocketIO with CORS support (using threading instead of eventlet for Python 3.14)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 trader = LiveTrader()
 
@@ -222,4 +221,4 @@ if __name__ == '__main__':
     print("\n访问地址: http://localhost:5001")
     print("\n按 Ctrl+C 停止服务器\n")
 
-    socketio.run(app, host='0.0.0.0', port=5001, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False, allow_unsafe_werkzeug=True)

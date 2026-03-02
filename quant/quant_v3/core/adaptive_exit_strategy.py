@@ -19,8 +19,8 @@ class AdaptiveExitStrategy:
             'sell_threshold': 6.0,
             'stop_loss_pct': 12.0,
             'profit_protection': [
-                {'profit_pct': 50.0, 'drawback_pct': 15.0},
-                {'profit_pct': 30.0, 'drawback_pct': 12.0},
+                {'profit_pct': 80.0, 'drawback_pct': 20.0},  # 提高阈值，允许追大趋势
+                {'profit_pct': 50.0, 'drawback_pct': 15.0},  # 保持原有第二档
             ],
             'quick_profit_lock': None,
         },

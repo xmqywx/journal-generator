@@ -710,7 +710,7 @@ function createHistoryItem(backtest) {
     // 从backtest对象直接获取配置（后端已返回）
     const leverage = backtest.leverage || 1;
     const buyThreshold = backtest.strategy_params?.buy_threshold || 0;
-    const sellThreshold = backtest.strategy_params?.sell_threshold || 0;
+    const sellThreshold = backtest.strategy_params?.sell_threshold || null;
 
     // 格式化时间范围
     const startDate = new Date(backtest.start_date).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -746,9 +746,13 @@ function createHistoryItem(backtest) {
                 <span class="font-medium">${leverage}x</span>
             </div>
             <div class="flex justify-between">
-                <span class="text-gray-500">阈值</span>
-                <span class="font-medium">${buyThreshold.toFixed(1)}/${sellThreshold.toFixed(1)}</span>
+                <span class="text-gray-500">买入阈值</span>
+                <span class="font-medium">${buyThreshold.toFixed(1)}</span>
             </div>
+            ${sellThreshold !== null ? `<div class="flex justify-between">
+                <span class="text-gray-500">卖出阈值</span>
+                <span class="font-medium">${sellThreshold.toFixed(1)}</span>
+            </div>` : ''}
             <div class="text-gray-400 text-xs pt-1 border-t border-gray-100">
                 ${new Date(backtest.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </div>

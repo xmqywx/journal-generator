@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>诊断页面</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #444; }
+        .pass { background: #1a4d1a; }
+        .fail { background: #4d1a1a; }
+        pre { background: #000; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>UI诊断页面</h1>
+    <div id="tests"></div>
+    
+    <script>
+        const output = document.getElementById('tests');
+        
+        function addTest(name, passed, details) {
+            const div = document.createElement('div');
+            div.className = 'test ' + (passed ? 'pass' : 'fail');
+            div.innerHTML = `
+                <strong>${passed ? '✅' : '❌'} ${name}</strong>
+                <pre>${details}</pre>
+            `;
+            output.appendChild(div);
+        }
+        
+        // 测试1: 检查函数是否存在
+        fetch('/static/app.js')
+            .then(r => r.text())
+            .then(code => {
+                const hasSafeGet = code.includes('function safeGet');
+                const hasFormatNumber = code.includes('function formatNumber');
+                const fileSize = code.length;
+                
+                addTest('JavaScript文件加载', hasSafeGet && hasFormatNumber, 
+                    `文件大小: ${fileSize} 字节\n` +
+                    `包含safeGet: ${hasSafeGet}\n` +
+                    `包含formatNumber: ${hasFormatNumber}\n` +
+                    `包含isNaN检查: ${code.includes('isNaN(num)')}`
+                );
+            });
+        
+        // 测试2: 检查API响应
+        fetch('/api/status')
+            .then(r => r.json())
+            .then(data => {
+                const fields = {
+                    'capital': data.capital,
+                    'position': data.position,
+                    'recommendation.action': data.recommendation?.action,
+                    'recommendation.details.current_price': data.recommendation?.details?.current_price,
+                    'recommendation.details.comprehensive_score': data.recommendation?.details?.comprehensive_score,
+                    'recommendation.details.trend_365d': data.recommendation?.details?.trend_365d,
+                    'recommendation.details.trend_180d': data.recommendation?.details?.trend_180d,
+                    'performance.num_trades': data.performance?.num_trades
+                };
+                
+                const allValid = Object.values(fields).every(v => v !== undefined);
+                addTest('API数据完整性', allValid, JSON.stringify(fields, null, 2));
+            })
+            .catch(err => {
+                addTest('API数据完整性', false, err.message);
+            });
+        
+        // 测试3: 检查Chart.js CDN
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = () => {
+            addTest('Chart.js CDN加载', true, `版本: ${typeof Chart !== 'undefined' ? Chart.version : 'unknown'}`);
+        };
+        script.onerror = () => {
+            addTest('Chart.js CDN加载', false, 'CDN加载失败');
+        };
+        document.head.appendChild(script);
+        
+        // 测试4: 浏览器信息
+        setTimeout(() => {
+            addTest('浏览器信息', true, 
+                `User Agent: ${navigator.userAgent}\n` +
+                `当前时间: ${new Date().toLocaleString('zh-CN')}\n` +
+                `页面URL: ${location.href}`
+            );
+        }, 100);
+    </script>
+</body>
+</html>

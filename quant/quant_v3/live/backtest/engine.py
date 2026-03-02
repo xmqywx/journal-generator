@@ -452,6 +452,9 @@ class BacktestEngine:
                     partial_pnl = capital_from_sell - (entry_capital * sell_ratio)
                     partial_return = partial_pnl / (entry_capital * sell_ratio) if entry_capital > 0 else 0
 
+                    # 更新剩余仓位的成本基础
+                    entry_capital = entry_capital * (1 - sell_ratio)
+
                     trades.append({
                         'entry_date': entry_date,
                         'entry_price': entry_price,

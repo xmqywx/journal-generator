@@ -35,7 +35,9 @@ class MarketDetectorV2:
         super_long_period: int = 180,  # 改为180天，减少滞后
         # ADX阈值
         adx_threshold_strong: float = 25.0,
-        adx_threshold_weak: float = 15.0
+        adx_threshold_weak: float = 15.0,
+        # 时间框架
+        timeframe: str = '1D'  # '1H'=小时线, '1D'=日线
     ):
         """
         Args:
@@ -45,6 +47,7 @@ class MarketDetectorV2:
             super_long_period: 超长期周期（天，默认180天）
             adx_threshold_strong: 强趋势ADX阈值
             adx_threshold_weak: 弱趋势ADX阈值
+            timeframe: 数据时间框架（'1H'=小时线, '1D'=日线）
         """
         self.short_period = short_period
         self.medium_period = medium_period
@@ -52,6 +55,15 @@ class MarketDetectorV2:
         self.super_long_period = super_long_period
         self.adx_threshold_strong = adx_threshold_strong
         self.adx_threshold_weak = adx_threshold_weak
+        self.timeframe = timeframe
+
+        # 根据时间框架计算实际的数据点数量
+        if timeframe == '1H':
+            self.bars_per_day = 24
+        elif timeframe == '1D':
+            self.bars_per_day = 1
+        else:
+            raise ValueError(f"不支持的时间框架: {timeframe}，仅支持 '1H' 或 '1D'")
 
     def detect(self, df: pd.DataFrame, index: int = -1) -> MarketState:
         """检测市场环境（简化版，返回BULL/BEAR/RANGING）
@@ -89,9 +101,9 @@ class MarketDetectorV2:
         if index == -1:
             index = len(df) - 1
 
-        # 数据充足性检查（需要至少180天数据）
-        min_hours = self.super_long_period * 24
-        if index < min_hours:
+        # 数据充足性检查（需要至少super_long_period天数据）
+        min_bars = self.super_long_period * self.bars_per_day
+        if index < min_bars:
             return 'RANGING', 0.0
 
         # 计算综合评分（0-10分）
@@ -319,7 +331,7 @@ class MarketDetectorV2:
         penalty = 0.0
 
         # 找出过去90天的最高价
-        lookback_hours = 90 * 24
+        lookback_hours = 90 * self.bars_per_day
         start_idx = max(0, index - lookback_hours)
 
         if start_idx >= index:
@@ -343,7 +355,7 @@ class MarketDetectorV2:
             penalty -= 1.0
 
         # 同时检查180天高点（更长期）
-        lookback_hours_long = 180 * 24
+        lookback_hours_long = 180 * self.bars_per_day
         start_idx_long = max(0, index - lookback_hours_long)
 
         if start_idx_long < index:
@@ -394,7 +406,7 @@ class MarketDetectorV2:
         Returns:
             价格变化率（正=上涨，负=下跌）
         """
-        lookback_hours = days * 24
+        lookback_hours = days * self.bars_per_day
         start_idx = max(0, index - lookback_hours)
 
         if start_idx >= index:
@@ -468,7 +480,7 @@ class MarketDetectorV2:
         drawdown_penalty = self._detect_drawdown_from_peak(df, index)
 
         # 回撤详情
-        lookback_90d = 90 * 24
+        lookback_90d = 90 * self.bars_per_day
         start_idx_90d = max(0, index - lookback_90d)
         high_90d = df['close'].iloc[start_idx_90d:index+1].max()
         current_price = df['close'].iloc[index]

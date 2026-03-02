@@ -39,3 +39,31 @@ AggregateError [ECONNREFUSED]:
 AggregateError [ECONNREFUSED]: 
     at internalConnectMultiple (node:net:1134:18)
     at afterConnectMultiple (node:net:1715:7)
+12:30:05 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:30:06 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:30:06 AM [vite] http proxy error: /api/candles?symbol=BTC-USDT&timeframe=1H&lookback_days=365&data_source=okx
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:30:10 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:30:10 AM [vite] http proxy error: /api/candles?symbol=BTC-USDT&timeframe=1H&lookback_days=365&data_source=okx
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:30:11 AM [vite] http proxy error: /api/backtest
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:30:11 AM [vite] http proxy error: /api/candles?symbol=BTC-USDT&timeframe=1H&lookback_days=365&data_source=okx
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
