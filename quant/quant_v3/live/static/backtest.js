@@ -145,7 +145,8 @@ function getBacktestConfig() {
     // Get strategy params
     const strategyParams = {
         buy_threshold: parseFloat(document.getElementById('buyThreshold').value) || 7.5,
-        sell_threshold: parseFloat(document.getElementById('sellThreshold').value) || 5.0,
+        // sell_threshold已移除 - 现在使用自适应策略根据波动率自动决定卖出参数
+        // sell_threshold: parseFloat(document.getElementById('sellThreshold').value) || 5.0,
         // Add periods for MarketDetectorV2
         periods: {
             short: 20,
@@ -247,7 +248,7 @@ document.getElementById('resetConfig').addEventListener('click', () => {
     document.getElementById('leverage').value = '1.0';
     document.getElementById('feeRate').value = '0.04';
     document.getElementById('buyThreshold').value = '7.5';
-    document.getElementById('sellThreshold').value = '4.0';
+    // document.getElementById('sellThreshold').value = '4.0'; // 已移除，使用自适应策略
 
     // Reset time range to 1 year
     document.querySelector('input[name="timeRange"][value="365"]').checked = true;
@@ -614,7 +615,8 @@ function loadBacktestConfig(backtest) {
         // 策略参数
         if (backtest.strategy_params) {
             document.getElementById('buyThreshold').value = backtest.strategy_params.buy_threshold || 7.5;
-            document.getElementById('sellThreshold').value = backtest.strategy_params.sell_threshold || 4.0;
+            // sellThreshold已移除，使用自适应策略
+            // document.getElementById('sellThreshold').value = backtest.strategy_params.sell_threshold || 4.0;
             document.getElementById('decelerationFilter').value = backtest.strategy_params.deceleration_filter || 3.0;
             document.getElementById('drawdownFilter').value = backtest.strategy_params.drawdown_filter || 3.0;
         }
