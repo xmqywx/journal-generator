@@ -12,13 +12,13 @@ def create_sample_data(volatility_level='stable'):
     if volatility_level == 'stable':
         # STABLE级别：日波动<3%, 周波动<5%, 最大跌幅<8%
         # 使用更小的标准差确保稳定分类
-        returns = np.random.normal(0.001, 0.015, 365)
+        returns = np.random.normal(0.001, 0.01, 365)
     elif volatility_level == 'moderate':
         # MODERATE级别：介于STABLE和HIGH之间
         returns = np.random.normal(0.001, 0.04, 365)
     else:  # high
         # HIGH级别：日波动>5%, 周波动>10%, 最大跌幅>15%
-        returns = np.random.normal(0.001, 0.08, 365)
+        returns = np.random.normal(0.001, 0.10, 365)
 
     prices = 100 * (1 + returns).cumprod()
 
@@ -43,13 +43,14 @@ def test_volatility_detector_stable():
     # Verify volatility classification
     assert result['volatility_level'] == 'STABLE'
 
-    # Verify daily_volatility
-    assert result['daily_volatility'] < 0.04
+    # Verify daily_volatility - STABLE: < 3%
+    assert result['daily_volatility'] < 0.03
     assert result['daily_volatility'] > 0
     assert not np.isnan(result['daily_volatility'])
 
-    # Verify weekly_volatility
+    # Verify weekly_volatility - STABLE: < 5%
     assert 'weekly_volatility' in result
+    assert result['weekly_volatility'] < 0.05
     assert result['weekly_volatility'] > 0
     assert not np.isnan(result['weekly_volatility'])
 
@@ -58,8 +59,9 @@ def test_volatility_detector_stable():
     assert result['atr_percentage'] > 0
     assert not np.isnan(result['atr_percentage'])
 
-    # Verify max_drawdown_speed
+    # Verify max_drawdown_speed - STABLE: < 8%
     assert 'max_drawdown_speed' in result
+    assert result['max_drawdown_speed'] < 0.08
     assert result['max_drawdown_speed'] > 0
     assert not np.isnan(result['max_drawdown_speed'])
 
@@ -72,13 +74,13 @@ def test_volatility_detector_high():
     # Verify volatility classification
     assert result['volatility_level'] == 'HIGH'
 
-    # Verify daily_volatility
-    assert result['daily_volatility'] > 0.04
+    # Verify daily_volatility - HIGH: > 5%
+    assert result['daily_volatility'] > 0.05
     assert not np.isnan(result['daily_volatility'])
 
-    # Verify weekly_volatility
+    # Verify weekly_volatility - HIGH: > 10%
     assert 'weekly_volatility' in result
-    assert result['weekly_volatility'] > 0
+    assert result['weekly_volatility'] > 0.10
     assert not np.isnan(result['weekly_volatility'])
 
     # Verify atr_percentage
@@ -86,7 +88,7 @@ def test_volatility_detector_high():
     assert result['atr_percentage'] > 0
     assert not np.isnan(result['atr_percentage'])
 
-    # Verify max_drawdown_speed
+    # Verify max_drawdown_speed - HIGH: > 15%
     assert 'max_drawdown_speed' in result
-    assert result['max_drawdown_speed'] > 0
+    assert result['max_drawdown_speed'] > 0.15
     assert not np.isnan(result['max_drawdown_speed'])
