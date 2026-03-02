@@ -665,7 +665,12 @@ class BacktestEngine:
                 exit_score=t['exit_score'],
                 pnl=t['pnl'],
                 return_pct=t['return_pct'],
-                holding_days=t['holding_days']
+                holding_days=t['holding_days'],
+                # 自适应策略新增字段
+                exit_reason=t.get('exit_reason'),
+                volatility_level=t.get('volatility_level'),
+                is_partial=t.get('is_partial', False),
+                sell_ratio=t.get('sell_ratio', 1.0)
             )
             for t in trades
         ]

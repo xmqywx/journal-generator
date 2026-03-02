@@ -14,6 +14,8 @@ from sqlalchemy import (
     JSON,
     ForeignKey,
     Index,
+    Boolean,
+    Float,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -117,6 +119,12 @@ class BacktestTrade(Base):
     pnl = Column(Numeric(15, 2))
     return_pct = Column(Numeric(10, 4))
     holding_days = Column(Integer)
+
+    # 自适应策略新增字段
+    exit_reason = Column(String, nullable=True)  # 退出原因
+    volatility_level = Column(String, nullable=True)  # 波动率类型
+    is_partial = Column(Boolean, default=False)  # 是否部分卖出
+    sell_ratio = Column(Float, default=1.0)  # 卖出比例
 
     # Relationship
     run = relationship("BacktestRun", back_populates="trades")
