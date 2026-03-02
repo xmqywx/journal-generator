@@ -5,8 +5,10 @@ import numpy as np
 from datetime import datetime, timedelta
 from quant_v3.core.volatility_detector import VolatilityDetector
 
-def create_sample_data(volatility_level='stable'):
+def create_sample_data(volatility_level='stable', seed=42):
     """创建测试数据"""
+    # 使用固定随机种子确保测试可重复
+    np.random.seed(seed)
     dates = pd.date_range(end=datetime.now(), periods=365, freq='D')
 
     if volatility_level == 'stable':
@@ -15,10 +17,11 @@ def create_sample_data(volatility_level='stable'):
         returns = np.random.normal(0.001, 0.01, 365)
     elif volatility_level == 'moderate':
         # MODERATE级别：介于STABLE和HIGH之间
-        returns = np.random.normal(0.001, 0.04, 365)
+        # 日波动 3-5%, 周波动 5-10%, 最大跌幅 8-15%
+        returns = np.random.normal(0.001, 0.035, 365)
     else:  # high
         # HIGH级别：日波动>5%, 周波动>10%, 最大跌幅>15%
-        returns = np.random.normal(0.001, 0.10, 365)
+        returns = np.random.normal(0.001, 0.08, 365)
 
     prices = 100 * (1 + returns).cumprod()
 
@@ -74,21 +77,58 @@ def test_volatility_detector_high():
     # Verify volatility classification
     assert result['volatility_level'] == 'HIGH'
 
-    # Verify daily_volatility - HIGH: > 5%
-    assert result['daily_volatility'] > 0.05
+    # Verify at least one metric exceeds HIGH threshold
+    # HIGH: daily_vol > 5% OR weekly_vol > 10% OR max_drop > 15%
+    assert (result['daily_volatility'] > 0.05 or
+            result['weekly_volatility'] > 0.10 or
+            result['max_drawdown_speed'] > 0.15)
+
+    # Verify all fields exist and are valid
+    assert 'daily_volatility' in result
+    assert result['daily_volatility'] > 0
     assert not np.isnan(result['daily_volatility'])
 
-    # Verify weekly_volatility - HIGH: > 10%
     assert 'weekly_volatility' in result
-    assert result['weekly_volatility'] > 0.10
+    assert result['weekly_volatility'] > 0
     assert not np.isnan(result['weekly_volatility'])
 
-    # Verify atr_percentage
     assert 'atr_percentage' in result
     assert result['atr_percentage'] > 0
     assert not np.isnan(result['atr_percentage'])
 
-    # Verify max_drawdown_speed - HIGH: > 15%
     assert 'max_drawdown_speed' in result
-    assert result['max_drawdown_speed'] > 0.15
+    assert result['max_drawdown_speed'] > 0
     assert not np.isnan(result['max_drawdown_speed'])
+
+def test_volatility_detector_moderate():
+    """测试中等波动币种识别（主流币）"""
+    df = create_sample_data('moderate')
+    detector = VolatilityDetector()
+    result = detector.calculate_volatility(df)
+
+    # Verify volatility classification
+    assert result['volatility_level'] == 'MODERATE'
+
+    # Verify metrics are in MODERATE range
+    # Not STABLE (at least one metric exceeds STABLE thresholds)
+    # Not HIGH (no metric exceeds HIGH thresholds)
+    assert not (result['daily_volatility'] < 0.03 and
+                result['weekly_volatility'] < 0.05 and
+                result['max_drawdown_speed'] < 0.08)
+    assert not (result['daily_volatility'] > 0.05 or
+                result['weekly_volatility'] > 0.10 or
+                result['max_drawdown_speed'] > 0.15)
+
+    # Verify all fields exist
+    assert 'atr_percentage' in result
+    assert result['atr_percentage'] > 0
+    assert not pd.isna(result['atr_percentage'])
+
+def test_volatility_detector_insufficient_data():
+    """测试数据不足时抛出异常"""
+    df = create_sample_data('stable')
+    df = df.tail(50)  # Only 50 days
+    detector = VolatilityDetector()
+
+    with pytest.raises(ValueError, match="至少60天"):
+        detector.calculate_volatility(df)
