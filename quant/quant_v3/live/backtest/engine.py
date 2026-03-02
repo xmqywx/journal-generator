@@ -335,7 +335,7 @@ class BacktestEngine:
                           f"drawdown_penalty={details['drawdown_penalty']:.2f} (需要>-{drawdown_filter})", flush=True)
 
             else:
-                # 持仓，检查风控和卖出信号
+                # 持仓中
 
                 # 更新峰值价格
                 if current_price > peak_price:
@@ -369,16 +369,36 @@ class BacktestEngine:
                         'exit_score': -999,  # 特殊标记：爆仓
                         'pnl': pnl,
                         'return_pct': return_pct,
-                        'holding_days': holding_days
+                        'holding_days': holding_days,
+                        'exit_reason': '爆仓',
+                        'volatility_level': vol_level
                     })
 
                     print(f"[RISK] 爆仓！{current_date}, price={current_price:.2f}, loss={pnl:.2f}", flush=True)
+
+                    # 重置状态
+                    vol_level = None
+                    peak_price = 0
                     continue  # 跳过后续检查，资金归零后无法继续交易
 
-                # 3. 检查止损条件
-                if stop_loss > 0 and unrealized_return <= -stop_loss:
-                    # 触发止损：强制平仓
-                    capital, position = self._simulate_sell(capital, position, current_price, borrowed, fee_rate)
+                # 3. 准备持仓信息
+                position_info = {
+                    'entry_price': entry_price,
+                    'current_price': current_price,
+                    'peak_price': peak_price,
+                    'entry_capital': entry_capital,
+                    'score': score
+                }
+
+                # 4. 使用自适应策略检查卖出
+                exit_signal = exit_strategy.check_exit(position_info, vol_level)
+
+                # 5. 执行卖出决策
+                if exit_signal['action'] == 'SELL_ALL':
+                    # 全部卖出
+                    capital, position = self._simulate_sell(
+                        capital, position, current_price, borrowed, fee_rate
+                    )
                     borrowed = 0
 
                     pnl = capital - entry_capital
@@ -391,27 +411,46 @@ class BacktestEngine:
                         'entry_score': entry_score,
                         'exit_date': current_date,
                         'exit_price': current_price,
-                        'exit_score': -888,  # 特殊标记：止损
+                        'exit_score': score,
                         'pnl': pnl,
                         'return_pct': return_pct,
-                        'holding_days': holding_days
+                        'holding_days': holding_days,
+                        'exit_reason': exit_signal['reason'],
+                        'volatility_level': vol_level
                     })
 
-                    print(f"[RISK] 止损！{current_date}, price={current_price:.2f}, return={return_pct*100:.2f}%", flush=True)
-                    continue  # 已平仓，跳过后续检查
+                    print(f"[EXIT] 卖出: {current_date}, price={current_price:.2f}, "
+                          f"pnl={pnl:.2f}, reason={exit_signal['reason']}", flush=True)
 
-                # 4. 检查正常卖出信号
-                sell_threshold = strategy_params['sell_threshold']
+                    # 重置状态
+                    position = 0
+                    entry_price = 0
+                    vol_level = None
+                    peak_price = 0
 
-                if score < sell_threshold:
-                    # 卖出
-                    capital, position = self._simulate_sell(capital, position, current_price, borrowed, fee_rate)
-                    borrowed = 0  # 已还清借款
+                elif exit_signal['action'] == 'SELL_PARTIAL':
+                    # 部分卖出（新功能）
+                    sell_ratio = exit_signal['sell_ratio']
+                    sell_position = position * sell_ratio
+                    keep_position = position * (1 - sell_ratio)
 
-                    # 记录交易（单笔盈亏）
-                    pnl = capital - entry_capital  # 这笔交易的盈亏
-                    return_pct = pnl / entry_capital if entry_capital > 0 else 0  # 基于实际盈亏计算收益率
-                    holding_days = (current_date - entry_date).days
+                    # 卖出部分仓位
+                    gross = sell_position * current_price
+                    fee = gross * fee_rate
+                    net = gross - fee
+
+                    # 归还对应比例的借款
+                    repay_borrowed = borrowed * sell_ratio
+                    capital_from_sell = net - repay_borrowed
+
+                    # 更新状态
+                    capital += capital_from_sell
+                    position = keep_position
+                    borrowed -= repay_borrowed
+
+                    # 计算这部分的盈亏
+                    partial_pnl = capital_from_sell - (entry_capital * sell_ratio)
+                    partial_return = partial_pnl / (entry_capital * sell_ratio) if entry_capital > 0 else 0
 
                     trades.append({
                         'entry_date': entry_date,
@@ -420,14 +459,18 @@ class BacktestEngine:
                         'exit_date': current_date,
                         'exit_price': current_price,
                         'exit_score': score,
-                        'pnl': pnl,
-                        'return_pct': return_pct,
-                        'holding_days': holding_days
+                        'pnl': partial_pnl,
+                        'return_pct': partial_return,
+                        'holding_days': (current_date - entry_date).days,
+                        'exit_reason': f'{exit_signal["reason"]} (部分卖出{sell_ratio*100:.0f}%)',
+                        'volatility_level': vol_level,
+                        'is_partial': True,
+                        'sell_ratio': sell_ratio
                     })
 
-                    # 重置持仓
-                    position = 0
-                    entry_price = 0
+                    print(f"[PARTIAL EXIT] 部分卖出{sell_ratio*100:.0f}%: "
+                          f"{current_date}, price={current_price:.2f}, "
+                          f"pnl={partial_pnl:.2f}, reason={exit_signal['reason']}", flush=True)
 
         # 如果最后还持仓，强制平仓
         if position > 0:
@@ -449,7 +492,9 @@ class BacktestEngine:
                 'exit_score': 0,  # 强制平仓，无评分
                 'pnl': pnl,
                 'return_pct': return_pct,
-                'holding_days': holding_days
+                'holding_days': holding_days,
+                'exit_reason': '回测结束强制平仓',
+                'volatility_level': vol_level
             })
 
         # 输出调试统计
