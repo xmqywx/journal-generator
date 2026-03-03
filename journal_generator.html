@@ -594,16 +594,32 @@ td[contenteditable]:focus {
   outline-offset: -2px;
   box-shadow: 0 0 0 3px rgba(196,18,48,0.1);
 }
-td .edit-hint {
-  display: none;
-  position: absolute;
-  top: -6px; right: 2px;
-  font-size: 9px;
-  color: var(--cmb-red);
-  opacity: 0.6;
-  pointer-events: none;
+
+/* Category select */
+.cat-cell { padding: 0 4px !important; }
+.cat-select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text);
+  padding: 7px 2px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23b0b8c4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  padding-right: 16px;
 }
-td[contenteditable]:hover .edit-hint { display: block; }
+.cat-select:hover { background-color: rgba(196,18,48,0.04); }
+.cat-select:focus {
+  background-color: #fff;
+  box-shadow: inset 0 0 0 2px var(--cmb-red);
+  border-radius: 4px;
+}
 
 /* ============================================================
    Scrollbar
@@ -762,7 +778,7 @@ td[contenteditable]:hover .edit-hint { display: block; }
         </div>
         <div class="config-field">
           <label>工作表名称</label>
-          <input type="text" id="sheetName" value="银行日记账2025" style="width:200px">
+          <input type="text" id="sheetName" value="银行日记账2026" style="width:200px">
         </div>
         <div class="spacer"></div>
         <button class="btn btn-primary" id="btnParse" onclick="parseAndPreview()">解析预览 →</button>
@@ -867,6 +883,7 @@ const OUTSOURCE_COMPANIES = {
 
 const TAX_PREFIX_MAP = {
   '626': '个人所得税',
+  '421': '保险',
   '437': '保险',
 };
 
@@ -1057,9 +1074,19 @@ function classify(tx) {
   const date = tx.parsed_date || extractDate(summary);
 
   if (bizType === '企业银行收费') {
-    return { category: '服务费', description: '银行服务费', io_type: 'expense', date, note: '', group_tag: null };
+    return { category: '服务费', description: '银行服务费', io_type: 'expense', date, note: '', group_tag: 'service_fee' };
   }
-  if (bizType === '自助代发付款' || summary === '工资') {
+  if (bizType === '自助代发付款') {
+    if (summary.includes('工资')) {
+      return { category: '工资', description: '工资发放', io_type: 'expense', date, note: '', group_tag: null };
+    }
+    if (summary.includes('年终奖')) {
+      return { category: '年终奖', description: '年终奖', io_type: 'expense', date, note: '', group_tag: null };
+    }
+    // 其他代发：快递费、电费、交通费、电话费、报销等，用摘要作为分类
+    return { category: summary, description: summary, io_type: 'expense', date, note: '', group_tag: null };
+  }
+  if (summary === '工资') {
     return { category: '工资', description: '工资发放', io_type: 'expense', date, note: '', group_tag: null };
   }
   if (direction === '入账' && summary.includes('备用金')) {
@@ -1130,20 +1157,48 @@ function processTransactions(transactions, month) {
     insItems[0].description = '保险';
   }
 
-  // 3. Clear group tags
-  result.forEach(item => delete item.group_tag);
-
-  // 4. Generate voucher numbers (sequential, no sub-numbers)
-  const finalEntries = result.map((item, idx) => ({
-    A: `银${idx + 1}`,
-    B: item.date ? item.date[0] : month,
-    C: item.date ? item.date[1] : null,
-    D: item.category,
-    E: item.description,
-    H: item.io_type === 'income' ? item.amount : null,
-    I: item.io_type === 'expense' ? item.amount : null,
-    note: item.note || '',
-  }));
+  // 3. Generate voucher numbers (keep group_tag for sub-numbering) (insurance entries share one number with sub-numbers)
+  const finalEntries = [];
+  let voucherNum = 1;
+  let i = 0;
+  while (i < result.length) {
+    const item = result[i];
+    if (item.group_tag) {
+      // Find all consecutive entries with the same group_tag
+      const tag = item.group_tag;
+      let j = i;
+      while (j < result.length && result[j].group_tag === tag) j++;
+      const count = j - i;
+      for (let k = 0; k < count; k++) {
+        const ins = result[i + k];
+        finalEntries.push({
+          A: count > 1 ? `银${voucherNum}-${k + 1}` : `银${voucherNum}`,
+          B: ins.date ? ins.date[0] : month,
+          C: ins.date ? ins.date[1] : null,
+          D: ins.category,
+          E: ins.description,
+          H: ins.io_type === 'income' ? ins.amount : null,
+          I: ins.io_type === 'expense' ? ins.amount : null,
+          note: ins.note || '',
+        });
+      }
+      voucherNum++;
+      i = j;
+    } else {
+      finalEntries.push({
+        A: `银${voucherNum}`,
+        B: item.date ? item.date[0] : month,
+        C: item.date ? item.date[1] : null,
+        D: item.category,
+        E: item.description,
+        H: item.io_type === 'income' ? item.amount : null,
+        I: item.io_type === 'expense' ? item.amount : null,
+        note: item.note || '',
+      });
+      voucherNum++;
+      i++;
+    }
+  }
   return finalEntries;
 }
 
@@ -1180,10 +1235,10 @@ async function parseAndPreview() {
     const sheetName = document.getElementById('sheetName').value;
     const ws = wb.getWorksheet(sheetName);
     if (ws) {
-      const balCol = detectBalanceCol(ws);
+      const cols = detectColumns(ws);
       const lastYtd = findLastYtdRow(ws);
       if (lastYtd) {
-        const balCell = ws.getCell(lastYtd, balCol);
+        const balCell = ws.getCell(lastYtd, cols.balanceCol);
         const v = balCell.value;
         if (v != null) {
           if (typeof v === 'object' && v.formula) {
@@ -1232,6 +1287,22 @@ async function parseAndPreview() {
   goStep(2);
 }
 
+const CATEGORY_OPTIONS = [
+  '保险', '基本医疗保险', '公积金', '个人所得税',
+  '工资', '年终奖', '服务费', '备用金',
+  '外包费', '利息', '报销',
+  '交通费', '电费', '电话费', '快递费',
+  '税费', '未分类',
+];
+
+function buildCatSelect(currentVal, idx) {
+  const opts = [...CATEGORY_OPTIONS];
+  if (currentVal && !opts.includes(currentVal)) opts.unshift(currentVal);
+  return '<select class="cat-select" data-idx="' + idx + '">' +
+    opts.map(o => '<option value="' + o + '"' + (o === currentVal ? ' selected' : '') + '>' + o + '</option>').join('') +
+    '</select>';
+}
+
 function renderPreviewTable() {
   const fmtNum = n => n.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
   const tbody = document.getElementById('previewBody');
@@ -1244,37 +1315,37 @@ function renderPreviewTable() {
       : '<td class="amount">—</td>';
     const balStr = `<td class="amount">${fmtNum(e.balance)}</td>`;
     const dayStr = e.C != null ? e.C : '<span class="badge badge-warn">??</span>';
-    const catBadge = ['未分类', '税费'].includes(e.D) ? ` <span class="badge badge-err">需确认</span>` : '';
+    const catBadge = ['未分类', '税费'].includes(e.D) ? ' badge-err-bg' : '';
     return `<tr>` +
       `<td>${e.A}</td>` +
       `<td>${e.B}</td>` +
       `<td>${dayStr}</td>` +
-      `<td contenteditable="true" data-idx="${idx}" data-field="D">${e.D}${catBadge}</td>` +
+      `<td class="cat-cell">${buildCatSelect(e.D, idx)}</td>` +
       `<td contenteditable="true" data-idx="${idx}" data-field="E">${e.E}</td>` +
       hStr + iStr + balStr +
       `</tr>`;
   }).join('');
 
-  // Bind edit events
+  // Bind category select events
+  tbody.querySelectorAll('.cat-select').forEach(sel => {
+    sel.addEventListener('change', function() {
+      const idx = parseInt(this.dataset.idx);
+      if (entries[idx]) entries[idx].D = this.value;
+    });
+  });
+
+  // Bind summary edit events
   tbody.querySelectorAll('td[contenteditable]').forEach(td => {
     td.addEventListener('blur', function() {
       const idx = parseInt(this.dataset.idx);
       const field = this.dataset.field;
-      const newVal = this.textContent.trim();
-      if (entries[idx]) {
-        entries[idx][field] = newVal;
-        // Remove badge after manual edit
-        if (field === 'D') {
-          this.innerHTML = newVal;
-        }
-      }
+      if (entries[idx]) entries[idx][field] = this.textContent.trim();
     });
     td.addEventListener('keydown', function(ev) {
       if (ev.key === 'Enter') { ev.preventDefault(); this.blur(); }
       if (ev.key === 'Escape') {
         const idx = parseInt(this.dataset.idx);
-        const field = this.dataset.field;
-        this.textContent = entries[idx][field];
+        this.textContent = entries[idx][this.dataset.field];
         this.blur();
       }
     });
@@ -1291,22 +1362,24 @@ function addLog(msg, type = '') {
   area.scrollTop = area.scrollHeight;
 }
 
-function detectBalanceCol(ws) {
-  for (const col of [10, 11]) { // J=10, K=11
-    const cell = ws.getCell(1, col);
-    const val = cell.value;
-    if (val && String(val.richText ? val.richText.map(r=>r.text).join('') : val).includes('余额')) {
-      return col;
+function colLetter(n) { return String.fromCharCode(64 + n); }
+
+function detectColumns(ws) {
+  // Scan header rows 1-2 to find 收入/支出/余额 column positions
+  let incomeCol = null, expenseCol = null, balanceCol = null;
+  for (let r = 1; r <= 2; r++) {
+    for (let c = 1; c <= (ws.columnCount || 14); c++) {
+      const text = getCellText(ws.getCell(r, c));
+      if (text === '收入' && !incomeCol) incomeCol = c;
+      if (text === '支出' && !expenseCol) expenseCol = c;
+      if (text === '余额' && !balanceCol) balanceCol = c;
     }
   }
-  for (const col of [10, 11]) {
-    const cell = ws.getCell(2, col);
-    const val = cell.value;
-    if (val && String(val.richText ? val.richText.map(r=>r.text).join('') : val).includes('余额')) {
-      return col;
-    }
-  }
-  return 10; // default J
+  return {
+    incomeCol: incomeCol || 9,   // default I
+    expenseCol: expenseCol || 10, // default J
+    balanceCol: balanceCol || 11, // default K
+  };
 }
 
 function getCellText(cell) {
@@ -1353,8 +1426,6 @@ function copyRowHeight(ws, srcRow, dstRow) {
   if (src.height) dst.height = src.height;
 }
 
-const COL_MAP = { A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, J: 10, K: 11 };
-
 async function generateExcel() {
   const btn = document.getElementById('btnGenerate');
   btn.disabled = true;
@@ -1377,10 +1448,16 @@ async function generateExcel() {
     }
     addLog(`工作表: ${sheetName}`, 'ok');
 
-    const balCol = detectBalanceCol(ws);
-    const balLetter = balCol === 10 ? 'J' : 'K';
-    const noteCol = balCol + 1;
-    addLog(`余额列: ${balLetter}`, 'info');
+    // Dynamically detect column positions
+    const cols = detectColumns(ws);
+    const iCol = cols.incomeCol;   // 收入
+    const jCol = cols.expenseCol;  // 支出
+    const kCol = cols.balanceCol;  // 余额
+    const iLtr = colLetter(iCol);
+    const jLtr = colLetter(jCol);
+    const kLtr = colLetter(kCol);
+    const noteCol = kCol + 1;
+    addLog(`列检测: 收入=${iLtr}(${iCol}), 支出=${jLtr}(${jCol}), 余额=${kLtr}(${kCol})`, 'info');
 
     const lastYtd = findLastYtdRow(ws);
     if (!lastYtd) {
@@ -1391,10 +1468,24 @@ async function generateExcel() {
     }
     addLog(`上月本年累计: 行 ${lastYtd}`, 'info');
 
+    // Find previous 本年累计 row (for 本年累计 formula referencing previous month)
+    let prevYtd = null;
+    for (let row = 3; row < lastYtd; row++) {
+      if (getCellText(ws.getCell(row, 5)) === '本年累计') prevYtd = row;
+    }
+
     const ref = findRefRows(ws);
     addLog(`格式参考行: 数据=${ref.dataRow}, 合计=${ref.totalRow}, 累计=${ref.ytdRow}`, 'info');
 
-    const columns = [1, 2, 3, 4, 5, 6, 7, 8, 9, balCol];
+    // Preserve row heights for all existing rows (ExcelJS may lose them on load/save)
+    for (let r = 1; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      if (!row.height) row.height = 19.5;
+    }
+
+    const allCols = [];
+    for (let c = 1; c <= Math.max(kCol + 1, 11); c++) allCols.push(c);
+
     const startRow = lastYtd + 1;
     const lastDataRow = startRow + entries.length - 1;
     const totalRowNum = lastDataRow + 1;
@@ -1402,44 +1493,68 @@ async function generateExcel() {
 
     addLog(`写入 ${entries.length} 条数据到行 ${startRow}-${lastDataRow}...`, 'info');
 
+    // Data font style
+    const dataFont = { name: '微软雅黑', size: 9 };
+    const boldFont = { name: '微软雅黑', size: 9, bold: true };
+    const amtFmt = '#,##0.00';
+
     // Write data rows
     for (let idx = 0; idx < entries.length; idx++) {
       const row = startRow + idx;
       const e = entries[idx];
-      // Copy format + row height
-      for (const col of columns) copyCellStyle(ws, ref.dataRow, row, col);
+      // Copy format + row height from reference
+      for (const col of allCols) copyCellStyle(ws, ref.dataRow, row, col);
       copyRowHeight(ws, ref.dataRow, row);
+      ws.getRow(row).height = 19.5;
       // Values
       ws.getCell(row, 1).value = e.A;
       ws.getCell(row, 2).value = e.B;
       if (e.C != null) ws.getCell(row, 3).value = e.C;
       ws.getCell(row, 4).value = e.D;
       ws.getCell(row, 5).value = e.E;
-      if (e.H != null) ws.getCell(row, 8).value = e.H;
-      if (e.I != null) ws.getCell(row, 9).value = e.I;
+      if (e.H != null) { ws.getCell(row, iCol).value = e.H; ws.getCell(row, iCol).numFmt = amtFmt; }
+      if (e.I != null) { ws.getCell(row, jCol).value = e.I; ws.getCell(row, jCol).numFmt = amtFmt; }
       if (e.note) ws.getCell(row, noteCol).value = e.note;
-      // Balance formula
+      // Balance formula: K{row} = K{prev} + I{row} - J{row}
       const prev = row === startRow ? lastYtd : row - 1;
-      ws.getCell(row, balCol).value = { formula: `${balLetter}${prev}+H${row}-I${row}` };
+      ws.getCell(row, kCol).value = { formula: `${kLtr}${prev}+${iLtr}${row}-${jLtr}${row}` };
+      ws.getCell(row, kCol).numFmt = amtFmt;
+      // Apply font to all cells
+      for (const col of allCols) ws.getCell(row, col).font = dataFont;
     }
 
     // 本月合计
     addLog('写入本月合计...', 'info');
-    for (const col of columns) copyCellStyle(ws, ref.totalRow, totalRowNum, col);
-    copyRowHeight(ws, ref.totalRow, totalRowNum);
+    for (const col of allCols) copyCellStyle(ws, ref.totalRow, totalRowNum, col);
+    ws.getRow(totalRowNum).height = 19.5;
     ws.getCell(totalRowNum, 5).value = '本月合计';
-    ws.getCell(totalRowNum, 8).value = { formula: `SUM(H${startRow}:H${lastDataRow})` };
-    ws.getCell(totalRowNum, 9).value = { formula: `SUM(I${startRow}:I${lastDataRow})` };
-    ws.getCell(totalRowNum, balCol).value = { formula: `${balLetter}${lastYtd}+H${totalRowNum}-I${totalRowNum}` };
+    ws.getCell(totalRowNum, iCol).value = { formula: `SUM(${iLtr}${startRow}:${iLtr}${lastDataRow})` };
+    ws.getCell(totalRowNum, iCol).numFmt = amtFmt;
+    ws.getCell(totalRowNum, jCol).value = { formula: `SUM(${jLtr}${startRow}:${jLtr}${lastDataRow})` };
+    ws.getCell(totalRowNum, jCol).numFmt = amtFmt;
+    ws.getCell(totalRowNum, kCol).value = { formula: `${kLtr}${lastYtd}+${iLtr}${totalRowNum}-${jLtr}${totalRowNum}` };
+    ws.getCell(totalRowNum, kCol).numFmt = amtFmt;
+    for (const col of allCols) ws.getCell(totalRowNum, col).font = boldFont;
 
     // 本年累计
     addLog('写入本年累计...', 'info');
-    for (const col of columns) copyCellStyle(ws, ref.ytdRow, ytdRowNum, col);
-    copyRowHeight(ws, ref.ytdRow, ytdRowNum);
+    for (const col of allCols) copyCellStyle(ws, ref.ytdRow, ytdRowNum, col);
+    ws.getRow(ytdRowNum).height = 19.5;
     ws.getCell(ytdRowNum, 5).value = '本年累计';
-    ws.getCell(ytdRowNum, 8).value = { formula: `${balLetter}${lastYtd}+H${totalRowNum}` };
-    ws.getCell(ytdRowNum, 9).value = { formula: `I${totalRowNum}` };
-    ws.getCell(ytdRowNum, balCol).value = { formula: `H${ytdRowNum}-I${ytdRowNum}` };
+    // 本年累计 = 上月本年累计 + 本月合计
+    if (prevYtd) {
+      ws.getCell(ytdRowNum, iCol).value = { formula: `${iLtr}${totalRowNum}+${iLtr}${lastYtd}` };
+      ws.getCell(ytdRowNum, jCol).value = { formula: `${jLtr}${totalRowNum}+${jLtr}${lastYtd}` };
+    } else {
+      // First month: 本年累计 = 本月合计
+      ws.getCell(ytdRowNum, iCol).value = { formula: `${iLtr}${totalRowNum}` };
+      ws.getCell(ytdRowNum, jCol).value = { formula: `${jLtr}${totalRowNum}` };
+    }
+    ws.getCell(ytdRowNum, iCol).numFmt = amtFmt;
+    ws.getCell(ytdRowNum, jCol).numFmt = amtFmt;
+    ws.getCell(ytdRowNum, kCol).value = { formula: `${kLtr}${lastYtd}+${iLtr}${totalRowNum}-${jLtr}${totalRowNum}` };
+    ws.getCell(ytdRowNum, kCol).numFmt = amtFmt;
+    for (const col of allCols) ws.getCell(ytdRowNum, col).font = boldFont;
 
     // Generate output
     addLog('生成输出文件...', 'info');
@@ -1451,7 +1566,7 @@ async function generateExcel() {
     addLog(`本年累计: 行 ${ytdRowNum}`, 'ok');
 
     document.getElementById('downloadInfo').textContent =
-      `${entries.length} 条记录 · 行 ${startRow}-${lastDataRow} · 余额列 ${balLetter}`;
+      `${entries.length} 条记录 · 行 ${startRow}-${lastDataRow} · 余额列 ${kLtr}`;
 
     // Show voucher button if template uploaded
     document.getElementById('btnVoucher').style.display = voucherTemplateFile ? 'inline-flex' : 'none';
@@ -1540,6 +1655,42 @@ function clonePageBlock(ws, srcStart, srcEnd, dstStart, numCols) {
   }
 }
 
+// Merge sub-numbered entries (银1-1, 银1-2 → one voucher with summed amount)
+function mergeSubEntries(list) {
+  const merged = [];
+  let i = 0;
+  while (i < list.length) {
+    const entry = list[i];
+    const m = entry.A.match(/^银(\d+)-(\d+)$/);
+    if (m) {
+      const baseNum = m[1];
+      const subs = [entry];
+      let j = i + 1;
+      while (j < list.length) {
+        const m2 = list[j].A.match(/^银(\d+)-(\d+)$/);
+        if (m2 && m2[1] === baseNum) { subs.push(list[j]); j++; }
+        else break;
+      }
+      // Merge: 银1-1-2 or 银17-1-2-3
+      const subNums = subs.map(s => s.A.match(/-(\d+)$/)[1]);
+      const mergedNum = `银${baseNum}-${subNums.join('-')}`;
+      const totalH = subs.reduce((s, e) => s + (e.H || 0), 0) || null;
+      const totalI = subs.reduce((s, e) => s + (e.I || 0), 0) || null;
+      merged.push({
+        A: mergedNum,
+        B: entry.B, C: entry.C, D: entry.D,
+        E: subs.map(s => s.E).join('；'),
+        H: totalH, I: totalI,
+      });
+      i = j;
+    } else {
+      merged.push(entry);
+      i++;
+    }
+  }
+  return merged;
+}
+
 async function generateVouchers() {
   if (!voucherTemplateFile) { alert('请先上传凭单模板文件'); return; }
   if (!entries || !entries.length) { alert('请先解析交易数据'); return; }
@@ -1555,8 +1706,10 @@ async function generateVouchers() {
     const yearMatch = document.getElementById('sheetName').value.match(/(\d{4})/);
     const year = yearMatch ? parseInt(yearMatch[1]) : new Date().getFullYear();
 
-    const expenses = entries.filter(e => e.I != null);
-    const incomes = entries.filter(e => e.H != null);
+    // Merge sub-numbered entries before splitting into expenses/incomes
+    const mergedEntries = mergeSubEntries(entries);
+    const expenses = mergedEntries.filter(e => e.I != null);
+    const incomes = mergedEntries.filter(e => e.H != null);
 
     addLog(`支出 ${expenses.length} 条, 收入 ${incomes.length} 条`, 'info');
 
@@ -1584,8 +1737,7 @@ async function generateVouchers() {
         paySheet.getCell(baseRow + 2, 4).value = `${year}年${entry.B}月${day}日`;
 
         // Voucher number: row+2, col G(7)
-        const num = entry.A.replace('银', '');
-        paySheet.getCell(baseRow + 2, 7).value = `第${num}号`;
+        paySheet.getCell(baseRow + 2, 7).value = `第${entry.A}号`;
 
         // Description: row+3, col B(2) — 费用分类
         paySheet.getCell(baseRow + 3, 2).value = entry.D;
@@ -1623,8 +1775,7 @@ async function generateVouchers() {
         recSheet.getCell(baseRow + 2, 4).value = `${year}年${entry.B}月${day}日`;
 
         // Voucher number: row+2, col G(7)
-        const num = entry.A.replace('银', '');
-        recSheet.getCell(baseRow + 2, 7).value = `第${num}号`;
+        recSheet.getCell(baseRow + 2, 7).value = `第${entry.A}号`;
 
         // Description: row+4, col B(2) — after "收到"
         recSheet.getCell(baseRow + 4, 2).value = entry.D;
