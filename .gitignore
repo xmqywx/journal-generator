@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+package.json
+package-lock.json
+
+# Build artifacts
+*.min.html
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# OS
+.DS_Store
+
+# Sensitive files (safety net)
+*.sql
+*.ppk
+id_rsa*

@@ -1,0 +1,1900 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>银行日记账生成器</title>
+<style>
+/* ============================================================
+   Reset & Base — 招商银行风格
+   ============================================================ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-1: #ffffff;
+  --bg-2: #f5f6fa;
+  --bg-3: #eef0f5;
+  --card-bg: #ffffff;
+  --card-border: #e8ecf1;
+  --text: #2c3e50;
+  --text-dim: #8c95a6;
+  --text-light: #b0b8c4;
+  --cmb-red: #c41230;
+  --cmb-red-light: #e8143a;
+  --cmb-red-dark: #9e0e28;
+  --cmb-red-bg: rgba(196,18,48,0.06);
+  --cmb-gold: #c5933a;
+  --danger: #e53e3e;
+  --success: #38a169;
+  --warning: #d69e2e;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 14px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.04);
+  --radius: 12px;
+  --font: 'SF Pro Display', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg-2);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   Background — 简洁白底 + 微妙动画
+   ============================================================ */
+.bg-gradient {
+  position: fixed; inset: 0;
+  z-index: -1;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.bg-gradient::before {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(196,18,48,0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(197,147,58,0.03) 0%, transparent 50%);
+  animation: bgDrift 20s ease-in-out infinite alternate;
+}
+@keyframes bgDrift {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(30px, -20px) rotate(3deg); }
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 30px 24px 60px;
+  position: relative;
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+.header {
+  text-align: center;
+  margin-bottom: 36px;
+  padding-top: 10px;
+}
+.header h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--cmb-red);
+  letter-spacing: 3px;
+  position: relative;
+  display: inline-block;
+}
+.header h1::after {
+  content: '';
+  position: absolute;
+  bottom: -6px; left: 50%;
+  transform: translateX(-50%);
+  width: 60px; height: 3px;
+  background: linear-gradient(90deg, var(--cmb-red), var(--cmb-gold));
+  border-radius: 2px;
+  animation: underlineGrow 0.8s ease forwards;
+}
+@keyframes underlineGrow {
+  from { width: 0; opacity: 0; }
+  to   { width: 60px; opacity: 1; }
+}
+.header p {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-top: 14px;
+}
+
+/* ============================================================
+   Step Indicators
+   ============================================================ */
+.steps-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 36px;
+}
+.step-dot {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 600;
+  background: #fff;
+  border: 2px solid var(--card-border);
+  color: var(--text-light);
+  transition: all 0.4s ease;
+  position: relative;
+}
+.step-dot.active {
+  border-color: var(--cmb-red);
+  color: #fff;
+  background: var(--cmb-red);
+  box-shadow: 0 0 0 4px rgba(196,18,48,0.12);
+  animation: stepPulse 2s ease-in-out infinite;
+}
+@keyframes stepPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(196,18,48,0.12); }
+  50%      { box-shadow: 0 0 0 8px rgba(196,18,48,0.06); }
+}
+.step-dot.done {
+  border-color: var(--success);
+  color: #fff;
+  background: var(--success);
+}
+.step-line {
+  width: 80px; height: 2px;
+  background: var(--card-border);
+  transition: background 0.4s ease;
+}
+.step-line.active {
+  background: linear-gradient(90deg, var(--success), var(--cmb-red));
+}
+.step-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  position: absolute;
+  top: 42px;
+  white-space: nowrap;
+  transition: color 0.4s;
+}
+.step-dot.active .step-label { color: var(--cmb-red); font-weight: 600; }
+.step-dot.done .step-label { color: var(--success); }
+
+/* ============================================================
+   Card
+   ============================================================ */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* ============================================================
+   Step Panels
+   ============================================================ */
+.step-panel {
+  display: none;
+  animation: fadeSlideIn 0.4s ease;
+}
+.step-panel.active { display: block; }
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   Step 1: Input
+   ============================================================ */
+.input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+@media (max-width: 768px) { .input-grid { grid-template-columns: 1fr; } }
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cmb-red);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.section-title::before {
+  content: '';
+  width: 3px; height: 14px;
+  background: linear-gradient(180deg, var(--cmb-red), var(--cmb-red-light));
+  border-radius: 2px;
+}
+
+textarea {
+  width: 100%;
+  height: 260px;
+  background: var(--bg-2);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 14px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+textarea:focus {
+  border-color: var(--cmb-red);
+  box-shadow: 0 0 0 3px rgba(196,18,48,0.1);
+}
+textarea::placeholder { color: var(--text-light); }
+
+/* Drop Zone */
+.drop-zone {
+  height: 260px;
+  border: 2px dashed #d0d5dd;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.drop-zone::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at center, rgba(196,18,48,0.04) 0%, transparent 70%);
+  transition: opacity 0.3s;
+  opacity: 0;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--cmb-red);
+  box-shadow: 0 0 0 3px rgba(196,18,48,0.1);
+  background: rgba(196,18,48,0.02);
+}
+.drop-zone.dragover::before { opacity: 1; }
+.drop-zone.has-file {
+  border-color: var(--success);
+  border-style: solid;
+  background: rgba(56,161,105,0.03);
+}
+.drop-icon {
+  font-size: 40px;
+  opacity: 0.5;
+  transition: all 0.3s;
+}
+.drop-zone:hover .drop-icon { opacity: 0.8; transform: translateY(-4px); }
+.drop-text { color: var(--text-dim); font-size: 14px; }
+.drop-text small { font-size: 12px; }
+.file-name {
+  color: var(--success);
+  font-size: 14px;
+  font-weight: 500;
+  word-break: break-all;
+  text-align: center;
+  padding: 0 12px;
+}
+.drop-zone input[type="file"] { display: none; }
+
+/* Config Row */
+.config-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.config-field label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.config-field select,
+.config-field input[type="text"] {
+  background: var(--bg-2);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.config-field select:focus,
+.config-field input[type="text"]:focus {
+  border-color: var(--cmb-red);
+  box-shadow: 0 0 0 3px rgba(196,18,48,0.1);
+}
+.config-field select option { background: #fff; }
+
+/* ============================================================
+   Step 2: Preview
+   ============================================================ */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+@media (max-width: 600px) { .stats-row { grid-template-columns: 1fr; } }
+
+.stat-card {
+  background: var(--bg-2);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+.stat-value.income { color: var(--success); }
+.stat-value.expense { color: var(--danger); }
+.stat-value.count { color: var(--cmb-red); }
+.stat-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* Table */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+thead th {
+  background: var(--bg-3);
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--card-border);
+  white-space: nowrap;
+}
+tbody tr {
+  transition: background 0.2s, transform 0.2s;
+  animation: rowFadeIn 0.3s ease backwards;
+}
+tbody tr:hover {
+  background: var(--cmb-red-bg);
+  transform: scale(1.005);
+}
+tbody tr:nth-child(even) {
+  background: rgba(0,0,0,0.015);
+}
+tbody tr:nth-child(even):hover {
+  background: var(--cmb-red-bg);
+}
+tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f0f2f5;
+  white-space: nowrap;
+}
+td.amount {
+  font-family: var(--mono);
+  text-align: right;
+}
+@keyframes rowFadeIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+td.income-val { color: var(--success); font-weight: 600; }
+td.expense-val { color: var(--danger); font-weight: 600; }
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.badge-warn {
+  background: rgba(214,158,46,0.12);
+  color: var(--warning);
+}
+.badge-err {
+  background: rgba(229,62,62,0.1);
+  color: var(--danger);
+}
+
+/* ============================================================
+   Step 3: Download
+   ============================================================ */
+.download-area {
+  text-align: center;
+  padding: 40px 20px;
+}
+.download-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  animation: float 3s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+.log-area {
+  background: var(--bg-2);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 20px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: left;
+  line-height: 1.8;
+}
+.log-area .log-ok { color: var(--success); }
+.log-area .log-warn { color: var(--warning); }
+.log-area .log-err { color: var(--danger); }
+.log-area .log-info { color: var(--cmb-red); }
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.btn-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 24px;
+  gap: 12px;
+}
+.btn {
+  padding: 10px 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  border: none;
+  transition: all 0.25s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--cmb-red);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(196,18,48,0.2);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--cmb-red-light);
+  box-shadow: 0 4px 16px rgba(196,18,48,0.3);
+  transform: translateY(-1px);
+}
+.btn-secondary {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--card-border);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--cmb-red);
+  color: var(--cmb-red);
+  box-shadow: var(--shadow-sm);
+}
+.btn-download {
+  background: var(--cmb-red);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 14px 40px;
+  box-shadow: 0 4px 16px rgba(196,18,48,0.25);
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+}
+.btn-download::after {
+  content: '';
+  position: absolute;
+  top: -50%; left: -75%;
+  width: 50%; height: 200%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transform: skewX(-25deg);
+  animation: btnShimmer 3s ease-in-out infinite;
+}
+@keyframes btnShimmer {
+  0%   { left: -75%; }
+  100% { left: 150%; }
+}
+.btn-download:hover:not(:disabled) {
+  background: var(--cmb-red-light);
+  box-shadow: 0 6px 24px rgba(196,18,48,0.35);
+  transform: translateY(-2px);
+}
+
+/* Spacer */
+.spacer { flex: 1; }
+
+/* ============================================================
+   Alerts
+   ============================================================ */
+.alert {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-top: 14px;
+  display: none;
+}
+.alert.show { display: block; }
+.alert-warn {
+  background: rgba(214,158,46,0.08);
+  border: 1px solid rgba(214,158,46,0.2);
+  color: #b7791f;
+}
+.alert-err {
+  background: rgba(229,62,62,0.06);
+  border: 1px solid rgba(229,62,62,0.15);
+  color: var(--danger);
+}
+
+/* ============================================================
+   Editable Cells
+   ============================================================ */
+td[contenteditable] {
+  cursor: text;
+  position: relative;
+}
+td[contenteditable]:hover {
+  background: rgba(196,18,48,0.04);
+  outline: 1px dashed var(--cmb-red);
+  outline-offset: -1px;
+}
+td[contenteditable]:focus {
+  background: #fff;
+  outline: 2px solid var(--cmb-red);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px rgba(196,18,48,0.1);
+}
+
+/* Category select */
+.cat-cell { padding: 0 4px !important; }
+.cat-select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text);
+  padding: 7px 2px;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23b0b8c4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  padding-right: 16px;
+}
+.cat-select:hover { background-color: rgba(196,18,48,0.04); }
+.cat-select:focus {
+  background-color: #fff;
+  box-shadow: inset 0 0 0 2px var(--cmb-red);
+  border-radius: 4px;
+}
+
+/* ============================================================
+   Scrollbar
+   ============================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d0d5dd; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b0b8c4; }
+
+/* ============================================================
+   Footer / Contact
+   ============================================================ */
+.footer {
+  margin-top: 60px;
+  padding: 40px 0 20px;
+  border-top: 1px solid var(--card-border);
+}
+.footer-contact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.footer-info {
+  text-align: left;
+}
+.footer-quote {
+  position: fixed;
+  right: -14px;
+  top: 50%;
+  transform: translateY(-50%) rotate(90deg);
+  transform-origin: center center;
+  font-size: 11px;
+  color: var(--card-border);
+  font-style: italic;
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: 1px;
+  z-index: 0;
+}
+.footer-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.footer-phone {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.footer-phone a {
+  color: var(--cmb-red);
+  text-decoration: none;
+  font-weight: 600;
+}
+.footer-phone a:hover {
+  text-decoration: underline;
+}
+.footer-hint {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-top: 8px;
+}
+.footer-qr {
+  width: 120px;
+  height: 120px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.3s, box-shadow 0.3s;
+  object-fit: cover;
+}
+.footer-qr:hover {
+  transform: scale(1.08);
+  box-shadow: var(--shadow-md);
+}
+.footer-qr-label {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-top: 6px;
+}
+.footer-divider {
+  width: 1px;
+  height: 80px;
+  background: var(--card-border);
+}
+@media (max-width: 600px) {
+  .footer-contact { flex-direction: column; gap: 20px; }
+  .footer-info { text-align: center; }
+  .footer-divider { width: 60px; height: 1px; }
+}
+</style>
+</head>
+<body>
+<div class="bg-gradient"></div>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>银行日记账生成器</h1>
+    <p>招商银行网银 HTML → Excel 日记账，一键生成 <span style="color:var(--text-light);font-size:11px">v20260303.1718</span></p>
+  </div>
+
+  <!-- Step Indicators -->
+  <div class="steps-bar">
+    <div class="step-dot active" id="sd1">1<span class="step-label">输入数据</span></div>
+    <div class="step-line" id="sl1"></div>
+    <div class="step-dot" id="sd2">2<span class="step-label">预览确认</span></div>
+    <div class="step-line" id="sl2"></div>
+    <div class="step-dot" id="sd3">3<span class="step-label">生成下载</span></div>
+  </div>
+
+  <!-- ==================== Step 1 ==================== -->
+  <div class="step-panel active" id="step1">
+    <div class="card">
+      <div style="background:var(--bg-2);border:1px solid var(--card-border);border-radius:10px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:var(--text-dim);line-height:1.9">
+        <strong style="color:var(--cmb-red)">如何获取银行交易 HTML：</strong>
+        <ol style="margin:6px 0 0 18px;padding:0">
+          <li>登录 <a href="https://fbc-web.paas.cmbchina.com/receipt/login" target="_blank" style="color:var(--cmb-red);text-decoration:none;font-weight:600">招商银行企业网银</a></li>
+          <li>选择正确的日期范围，查询交易明细</li>
+          <li>在页面上 <strong style="color:var(--text)">右键</strong> → 选择 <strong style="color:var(--text)">检查</strong>（或按 F12 打开开发者工具）</li>
+          <li>在 Elements 面板中找到表格区域，右键 → <strong style="color:var(--text)">Copy → Copy element</strong></li>
+          <li>粘贴到下方左侧文本框中</li>
+        </ol>
+      </div>
+      <div class="input-grid">
+        <!-- Left: HTML input -->
+        <div>
+          <div class="section-title">银行交易 HTML</div>
+          <textarea id="htmlInput" placeholder="将从招商银行网银复制的 HTML 代码粘贴到此处..."></textarea>
+        </div>
+        <!-- Right: Excel upload -->
+        <div>
+          <div class="section-title">日记账 Excel 文件</div>
+          <div class="drop-zone" id="dropZone">
+            <div class="drop-icon">📂</div>
+            <div class="drop-text">拖拽 Excel 文件到此处<br><small>或点击选择文件</small></div>
+            <input type="file" id="fileInput" accept=".xlsx,.xls">
+          </div>
+        </div>
+      </div>
+      <!-- Config -->
+      <div class="config-row">
+        <div class="config-field">
+          <label>月份</label>
+          <select id="monthSelect">
+            <option value="1">1月</option><option value="2" selected>2月</option>
+            <option value="3">3月</option><option value="4">4月</option>
+            <option value="5">5月</option><option value="6">6月</option>
+            <option value="7">7月</option><option value="8">8月</option>
+            <option value="9">9月</option><option value="10">10月</option>
+            <option value="11">11月</option><option value="12">12月</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>工作表名称</label>
+          <input type="text" id="sheetName" value="银行日记账2026" style="width:200px">
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="btnParse" onclick="parseAndPreview()">解析预览 →</button>
+      </div>
+      <div style="margin-top:16px">
+        <div class="section-title">凭单模板（可选）</div>
+        <div class="drop-zone" id="voucherDropZone" style="height:80px">
+          <div class="drop-text">拖拽或点击上传凭单模板 <small>支出单/收入单 (.xlsx)</small></div>
+          <input type="file" id="voucherFileInput" accept=".xlsx,.xls">
+        </div>
+      </div>
+      <div class="alert alert-err" id="step1Err"></div>
+    </div>
+  </div>
+
+  <!-- ==================== Step 2 ==================== -->
+  <div class="step-panel" id="step2">
+    <div class="card">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value income" id="statIncome">0.00</div>
+          <div class="stat-label">总收入</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value expense" id="statExpense">0.00</div>
+          <div class="stat-label">总支出</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value count" id="statCount">0</div>
+          <div class="stat-label">条目数</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>凭证号</th><th>月</th><th>日</th>
+              <th>费用分类</th><th>摘要</th>
+              <th style="text-align:right">收入</th>
+              <th style="text-align:right">支出</th>
+              <th style="text-align:right">余额</th>
+            </tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+      <div class="alert alert-warn" id="step2Warn"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goStep(1)">← 上一步</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="btnGenerate" onclick="generateExcel()">生成日记账 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Step 3 ==================== -->
+  <div class="step-panel" id="step3">
+    <div class="card">
+      <div class="download-area" id="downloadArea">
+        <div class="download-icon">✅</div>
+        <h2 style="margin-bottom:8px">日记账生成完成</h2>
+        <p style="color:var(--text-dim);margin-bottom:20px" id="downloadInfo"></p>
+        <button class="btn btn-download" id="btnDownload" onclick="downloadFile()">下载日记账 ⬇</button>
+        <button class="btn btn-download" id="btnVoucher" onclick="generateVouchers()" style="margin-left:12px; background:var(--cmb-gold); display:none">生成凭单 ⬇</button>
+      </div>
+      <div class="log-area" id="logArea"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goStep(1)">← 重新开始</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-contact">
+      <div class="footer-info">
+        <div class="footer-name">Kris</div>
+        <div class="footer-phone">tel: <a href="tel:17685688606">176-8568-8606</a></div>
+        <div class="footer-hint">使用中有任何问题，欢迎随时联系我</div>
+      </div>
+      <div class="footer-divider"></div>
+      <div style="text-align:center">
+        <img class="footer-qr" src="wechat_qr.jpg" alt="WeChat QR">
+        <div class="footer-qr-label">微信扫码联系</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<div class="footer-quote" id="footerQuote"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>
+/* ============================================================
+   Configuration (same as Python version)
+   ============================================================ */
+const OUTSOURCE_COMPANIES = {
+  '菏泽上禾数字科技有限公司': '',
+  '黄岛区萧氏探索互联网信息科技家（个体工商户）': 'xiao',
+  '深圳市汇思艺工业设计有限公司': '',
+};
+
+const TAX_PREFIX_MAP = {
+  '626': '个人所得税',
+  '421': '保险',
+  '437': '保险',
+};
+
+/* ============================================================
+   State
+   ============================================================ */
+let excelFile = null;       // ArrayBuffer
+let excelFileName = '';
+let entries = [];           // generated journal entries
+let outputBuffer = null;    // generated Excel ArrayBuffer
+let voucherTemplateFile = null; // ArrayBuffer for voucher template
+
+/* ============================================================
+   Step Navigation
+   ============================================================ */
+function goStep(n) {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('step' + n).classList.add('active');
+  for (let i = 1; i <= 3; i++) {
+    const dot = document.getElementById('sd' + i);
+    dot.classList.remove('active', 'done');
+    if (i < n) dot.classList.add('done');
+    else if (i === n) dot.classList.add('active');
+  }
+  for (let i = 1; i <= 2; i++) {
+    const line = document.getElementById('sl' + i);
+    line.classList.toggle('active', i < n);
+  }
+}
+
+/* ============================================================
+   Drag & Drop
+   ============================================================ */
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+  if (!file.name.match(/\.xlsx?$/i)) {
+    showErr('step1Err', '请选择 .xlsx 格式的 Excel 文件');
+    return;
+  }
+  excelFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    excelFile = e.target.result;
+    dropZone.classList.add('has-file');
+    dropZone.innerHTML = `
+      <div class="drop-icon">📊</div>
+      <div class="file-name">${file.name}</div>
+      <div class="drop-text"><small>点击重新选择</small></div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+    `;
+    const newInput = dropZone.querySelector('input');
+    newInput.addEventListener('change', () => { if (newInput.files.length) handleFile(newInput.files[0]); });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ============================================================
+   Voucher Template Upload
+   ============================================================ */
+const voucherDropZone = document.getElementById('voucherDropZone');
+const voucherFileInput = document.getElementById('voucherFileInput');
+
+voucherDropZone.addEventListener('click', () => voucherFileInput.click());
+voucherDropZone.addEventListener('dragover', e => { e.preventDefault(); voucherDropZone.classList.add('dragover'); });
+voucherDropZone.addEventListener('dragleave', () => voucherDropZone.classList.remove('dragover'));
+voucherDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  voucherDropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleVoucherFile(e.dataTransfer.files[0]);
+});
+voucherFileInput.addEventListener('change', () => { if (voucherFileInput.files.length) handleVoucherFile(voucherFileInput.files[0]); });
+
+function handleVoucherFile(file) {
+  if (!file.name.match(/\.xlsx?$/i)) {
+    showErr('step1Err', '请选择 .xlsx 格式的凭单模板');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    voucherTemplateFile = e.target.result;
+    voucherDropZone.classList.add('has-file');
+    voucherDropZone.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:20px">📋</span>
+        <span class="file-name" style="color:var(--success)">${file.name}</span>
+        <small style="color:var(--text-dim)">点击重新选择</small>
+      </div>
+      <input type="file" id="voucherFileInput" accept=".xlsx,.xls" style="display:none">
+    `;
+    const newInput = voucherDropZone.querySelector('input');
+    newInput.addEventListener('change', () => { if (newInput.files.length) handleVoucherFile(newInput.files[0]); });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ============================================================
+   HTML Parsing (port from Python)
+   ============================================================ */
+function parseRegTime(timeStr) {
+  if (!timeStr) return null;
+  let m = timeStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (m) return [parseInt(m[2]), parseInt(m[3])];
+  m = timeStr.match(/^(\d{4})(\d{2})(\d{2})/);
+  if (m) return [parseInt(m[2]), parseInt(m[3])];
+  m = timeStr.match(/^(\d{1,2})[-/](\d{1,2})/);
+  if (m) return [parseInt(m[1]), parseInt(m[2])];
+  return null;
+}
+
+function parseBankHtml(htmlStr) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlStr, 'text/html');
+  const transactions = [];
+
+  const fieldMap = {
+    cTrsMod: 'direction',
+    cCcyNbr: 'currency',
+    zTrsAmt: 'amount_str',
+    zCtpEac: 'counterparty_acct',
+    zCtpNam: 'counterparty_name',
+    zTrsTxt: 'summary',
+    cBusTyp: 'business_type',
+    cPrtTag: 'print_status',
+  };
+  const dateFields = new Set(['dTrsDay', 'dRegDat', 'dTrsDat', 'dRegDay', 'zRegDatTim']);
+
+  const rows = doc.querySelectorAll('tr.ant-table-row');
+  for (const row of rows) {
+    const tx = {};
+    for (const cell of row.querySelectorAll('td[data-field]')) {
+      const field = cell.getAttribute('data-field');
+      if (dateFields.has(field)) {
+        tx.reg_time = cell.textContent.trim();
+        continue;
+      }
+      if (field in fieldMap) {
+        tx[fieldMap[field]] = cell.textContent.trim();
+      }
+    }
+    if (tx.amount_str) {
+      tx.amount = parseFloat(tx.amount_str.replace(/,/g, ''));
+      if (tx.reg_time) tx.parsed_date = parseRegTime(tx.reg_time);
+      transactions.push(tx);
+    }
+  }
+  return transactions;
+}
+
+/* ============================================================
+   Classification (port from Python)
+   ============================================================ */
+function extractDate(summary) {
+  if (!summary) return null;
+  const m = summary.match(/(20\d{6})/);
+  if (m) {
+    const month = parseInt(m[1].substring(4, 6));
+    const day = parseInt(m[1].substring(6, 8));
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return [month, day];
+  }
+  return null;
+}
+
+function extractTaxNumber(summary) {
+  if (!summary) return '';
+  const m = summary.match(/税单号[：:](\d+)/);
+  return m ? m[1] : '';
+}
+
+function classify(tx) {
+  const direction = tx.direction || '';
+  const amount = tx.amount || 0;
+  const summary = tx.summary || '-';
+  const bizType = tx.business_type || '-';
+  const cptyName = tx.counterparty_name || '-';
+  const ioType = direction === '入账' ? 'income' : 'expense';
+  const date = tx.parsed_date || extractDate(summary);
+
+  if (bizType === '企业银行收费') {
+    return { category: '服务费', description: '银行服务费', io_type: 'expense', date, note: '', group_tag: 'service_fee' };
+  }
+  if (bizType === '自助代发付款') {
+    if (summary.includes('工资')) {
+      return { category: '工资', description: '工资发放', io_type: 'expense', date, note: '', group_tag: null };
+    }
+    if (summary.includes('年终奖')) {
+      return { category: '年终奖', description: '年终奖', io_type: 'expense', date, note: '', group_tag: null };
+    }
+    // 其他代发：快递费、电费、交通费、电话费、报销等，用摘要作为分类
+    return { category: summary, description: summary, io_type: 'expense', date, note: '', group_tag: null };
+  }
+  if (summary === '工资') {
+    return { category: '工资', description: '工资发放', io_type: 'expense', date, note: '', group_tag: null };
+  }
+  if (direction === '入账' && summary.includes('备用金')) {
+    return { category: '备用金', description: '总部拨付备用金', io_type: 'income', date, note: '', group_tag: null };
+  }
+  if (direction === '入账' && summary.includes('利息')) {
+    return { category: '利息', description: '利息', io_type: 'income', date, note: '', group_tag: null };
+  }
+  if (cptyName.includes('公积金')) {
+    return { category: '公积金', description: '公积金', io_type: ioType, date, note: '', group_tag: null };
+  }
+  if (summary.includes('实时缴税')) {
+    const taxNum = extractTaxNumber(summary);
+    const prefix = taxNum.length >= 3 ? taxNum.substring(0, 3) : '';
+    const taxType = TAX_PREFIX_MAP[prefix];
+    if (taxType === '个人所得税') {
+      return { category: '个人所得税', description: '个人所得税', io_type: 'expense', date, note: '', group_tag: null };
+    } else if (taxType === '保险') {
+      return { category: '保险', description: '待区分', io_type: 'expense', date, note: '', group_tag: 'insurance' };
+    } else {
+      return { category: '税费', description: `缴税(前缀${prefix})`, io_type: 'expense', date, note: '', group_tag: null };
+    }
+  }
+  if (bizType === '移动支付' && cptyName && cptyName !== '-') {
+    const note = OUTSOURCE_COMPANIES[cptyName] ?? '';
+    return { category: '外包费', description: '外包服务费', io_type: 'expense', date, note, group_tag: null };
+  }
+  if (direction === '入账') {
+    const desc = (cptyName && cptyName !== '-') ? cptyName : summary;
+    return { category: '其他收入', description: desc, io_type: 'income', date, note: '', group_tag: null };
+  }
+  return { category: '未分类', description: summary || bizType, io_type: 'expense', date, note: '', group_tag: null };
+}
+
+/* ============================================================
+   Process Transactions (port from Python)
+   ============================================================ */
+function processTransactions(transactions, month) {
+  // 0. Sort by date (no month filtering)
+  const sorted = [...transactions];
+  sorted.sort((a, b) => {
+    const da = a.parsed_date || [month, 99];
+    const db = b.parsed_date || [month, 99];
+    if (da[0] !== db[0]) return da[0] - db[0];
+    return da[1] - db[1];
+  });
+
+  // 1. Classify
+  const items = sorted.map(tx => {
+    const cls = classify(tx);
+    cls.amount = tx.amount;
+    cls.counterparty = tx.counterparty_name || '';
+    return cls;
+  });
+
+  const result = [...items];
+
+  // 2. Distinguish insurance types
+  const insIndices = [];
+  result.forEach((item, i) => { if (item.group_tag === 'insurance') insIndices.push(i); });
+  const insItems = insIndices.map(i => result[i]);
+  if (insItems.length >= 2) {
+    insItems.sort((a, b) => a.amount - b.amount);
+    insItems[0].description = '基本医疗保险';
+    for (let k = 1; k < insItems.length; k++) insItems[k].description = '保险';
+    insIndices.forEach((idx, j) => { result[idx] = insItems[j]; });
+  } else if (insItems.length === 1) {
+    insItems[0].description = '保险';
+  }
+
+  // 3. Generate voucher numbers (keep group_tag for sub-numbering) (insurance entries share one number with sub-numbers)
+  const finalEntries = [];
+  let voucherNum = 1;
+  let i = 0;
+  while (i < result.length) {
+    const item = result[i];
+    if (item.group_tag) {
+      // Find all consecutive entries with the same group_tag
+      const tag = item.group_tag;
+      let j = i;
+      while (j < result.length && result[j].group_tag === tag) j++;
+      const count = j - i;
+      for (let k = 0; k < count; k++) {
+        const ins = result[i + k];
+        finalEntries.push({
+          A: count > 1 ? `银${voucherNum}-${k + 1}` : `银${voucherNum}`,
+          B: ins.date ? ins.date[0] : month,
+          C: ins.date ? ins.date[1] : null,
+          D: ins.category,
+          E: ins.description,
+          H: ins.io_type === 'income' ? ins.amount : null,
+          I: ins.io_type === 'expense' ? ins.amount : null,
+          note: ins.note || '',
+        });
+      }
+      voucherNum++;
+      i = j;
+    } else {
+      finalEntries.push({
+        A: `银${voucherNum}`,
+        B: item.date ? item.date[0] : month,
+        C: item.date ? item.date[1] : null,
+        D: item.category,
+        E: item.description,
+        H: item.io_type === 'income' ? item.amount : null,
+        I: item.io_type === 'expense' ? item.amount : null,
+        note: item.note || '',
+      });
+      voucherNum++;
+      i++;
+    }
+  }
+  return finalEntries;
+}
+
+/* ============================================================
+   Step 1 → Step 2: Parse & Preview
+   ============================================================ */
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+let startingBalance = 0;
+
+async function parseAndPreview() {
+  const htmlStr = document.getElementById('htmlInput').value.trim();
+  if (!htmlStr) { showErr('step1Err', '请粘贴银行交易 HTML'); return; }
+  if (!excelFile) { showErr('step1Err', '请上传日记账 Excel 文件'); return; }
+
+  const transactions = parseBankHtml(htmlStr);
+  if (!transactions.length) {
+    showErr('step1Err', '未从 HTML 中解析到任何交易记录。请确认粘贴的是招商银行网银的交易明细表格。');
+    return;
+  }
+
+  const month = parseInt(document.getElementById('monthSelect').value);
+  entries = processTransactions(transactions, month);
+
+  // Read starting balance from Excel
+  try {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(excelFile);
+    const sheetName = document.getElementById('sheetName').value;
+    const ws = wb.getWorksheet(sheetName);
+    if (ws) {
+      const cols = detectColumns(ws);
+      const lastYtd = findLastYtdRow(ws);
+      if (lastYtd) {
+        const balCell = ws.getCell(lastYtd, cols.balanceCol);
+        const v = balCell.value;
+        if (v != null) {
+          if (typeof v === 'object' && v.formula) {
+            startingBalance = balCell.result != null ? Number(balCell.result) : 0;
+          } else {
+            startingBalance = Number(v) || 0;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('读取起始余额失败:', e);
+    startingBalance = 0;
+  }
+
+  // Compute running balance
+  let bal = startingBalance;
+  entries.forEach(e => {
+    bal = bal + (e.H || 0) - (e.I || 0);
+    e.balance = bal;
+  });
+
+  // Stats
+  const totalIn = entries.reduce((s, e) => s + (e.H || 0), 0);
+  const totalOut = entries.reduce((s, e) => s + (e.I || 0), 0);
+  document.getElementById('statIncome').textContent = totalIn.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+  document.getElementById('statExpense').textContent = totalOut.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+  document.getElementById('statCount').textContent = entries.length;
+
+  renderPreviewTable();
+
+  // Warnings
+  const warns = [];
+  const noDate = entries.filter(e => e.C == null);
+  if (noDate.length) warns.push(`${noDate.length} 条缺少日期(显示??)，写入后需在Excel中手动补填`);
+  const unknown = entries.filter(e => ['未分类', '税费'].includes(e.D));
+  if (unknown.length) warns.push(`${unknown.length} 条分类可能不准确，请核实`);
+  const warnEl = document.getElementById('step2Warn');
+  if (warns.length) {
+    warnEl.innerHTML = warns.join('<br>');
+    warnEl.classList.add('show');
+  } else {
+    warnEl.classList.remove('show');
+  }
+
+  goStep(2);
+}
+
+const CATEGORY_OPTIONS = [
+  '保险', '基本医疗保险', '公积金', '个人所得税',
+  '工资', '年终奖', '服务费', '备用金',
+  '外包费', '利息', '报销',
+  '交通费', '电费', '电话费', '快递费',
+  '税费', '未分类',
+];
+
+function buildCatSelect(currentVal, idx) {
+  const opts = [...CATEGORY_OPTIONS];
+  if (currentVal && !opts.includes(currentVal)) opts.unshift(currentVal);
+  return '<select class="cat-select" data-idx="' + idx + '">' +
+    opts.map(o => '<option value="' + o + '"' + (o === currentVal ? ' selected' : '') + '>' + o + '</option>').join('') +
+    '</select>';
+}
+
+function renderPreviewTable() {
+  const fmtNum = n => n.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = entries.map((e, idx) => {
+    const hStr = e.H != null
+      ? `<td class="amount income-val">${fmtNum(e.H)}</td>`
+      : '<td class="amount">—</td>';
+    const iStr = e.I != null
+      ? `<td class="amount expense-val">${fmtNum(e.I)}</td>`
+      : '<td class="amount">—</td>';
+    const balStr = `<td class="amount">${fmtNum(e.balance)}</td>`;
+    const dayStr = e.C != null ? e.C : '<span class="badge badge-warn">??</span>';
+    const catBadge = ['未分类', '税费'].includes(e.D) ? ' badge-err-bg' : '';
+    return `<tr>` +
+      `<td>${e.A}</td>` +
+      `<td>${e.B}</td>` +
+      `<td>${dayStr}</td>` +
+      `<td class="cat-cell">${buildCatSelect(e.D, idx)}</td>` +
+      `<td contenteditable="true" data-idx="${idx}" data-field="E">${e.E}</td>` +
+      hStr + iStr + balStr +
+      `</tr>`;
+  }).join('');
+
+  // Bind category select events
+  tbody.querySelectorAll('.cat-select').forEach(sel => {
+    sel.addEventListener('change', function() {
+      const idx = parseInt(this.dataset.idx);
+      if (entries[idx]) entries[idx].D = this.value;
+    });
+  });
+
+  // Bind summary edit events
+  tbody.querySelectorAll('td[contenteditable]').forEach(td => {
+    td.addEventListener('blur', function() {
+      const idx = parseInt(this.dataset.idx);
+      const field = this.dataset.field;
+      if (entries[idx]) entries[idx][field] = this.textContent.trim();
+    });
+    td.addEventListener('keydown', function(ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); this.blur(); }
+      if (ev.key === 'Escape') {
+        const idx = parseInt(this.dataset.idx);
+        this.textContent = entries[idx][this.dataset.field];
+        this.blur();
+      }
+    });
+  });
+}
+
+/* ============================================================
+   Step 2 → Step 3: Generate Excel
+   ============================================================ */
+function addLog(msg, type = '') {
+  const area = document.getElementById('logArea');
+  const cls = type ? ` class="log-${type}"` : '';
+  area.innerHTML += `<div${cls}>${msg}</div>`;
+  area.scrollTop = area.scrollHeight;
+}
+
+function colLetter(n) { return String.fromCharCode(64 + n); }
+
+function detectColumns(ws) {
+  // Scan header rows 1-2 to find 收入/支出/余额 column positions
+  let incomeCol = null, expenseCol = null, balanceCol = null;
+  for (let r = 1; r <= 2; r++) {
+    for (let c = 1; c <= (ws.columnCount || 14); c++) {
+      const text = getCellText(ws.getCell(r, c));
+      if (text === '收入' && !incomeCol) incomeCol = c;
+      if (text === '支出' && !expenseCol) expenseCol = c;
+      if (text === '余额' && !balanceCol) balanceCol = c;
+    }
+  }
+  return {
+    incomeCol: incomeCol || 9,   // default I
+    expenseCol: expenseCol || 10, // default J
+    balanceCol: balanceCol || 11, // default K
+  };
+}
+
+function getCellText(cell) {
+  if (!cell || cell.value == null) return '';
+  const v = cell.value;
+  if (typeof v === 'object' && v.richText) return v.richText.map(r => r.text).join('');
+  if (typeof v === 'object' && v.formula) return cell.result != null ? String(cell.result) : '';
+  return String(v);
+}
+
+function findLastYtdRow(ws) {
+  let last = null;
+  for (let row = 3; row <= ws.rowCount; row++) {
+    if (getCellText(ws.getCell(row, 5)) === '本年累计') last = row;
+  }
+  return last;
+}
+
+function findRefRows(ws) {
+  let dataRow = null, totalRow = null, ytdRow = null;
+  for (let row = 3; row <= ws.rowCount; row++) {
+    const eVal = getCellText(ws.getCell(row, 5));
+    const aVal = getCellText(ws.getCell(row, 1));
+    if (eVal === '本月合计' && totalRow == null) totalRow = row;
+    else if (eVal === '本年累计' && ytdRow == null) ytdRow = row;
+    else if (aVal && aVal.startsWith('银') && dataRow == null) dataRow = row;
+  }
+  return { dataRow: dataRow || 4, totalRow: totalRow || 15, ytdRow: ytdRow || 16 };
+}
+
+function copyCellStyle(ws, srcRow, dstRow, col) {
+  const src = ws.getCell(srcRow, col);
+  const dst = ws.getCell(dstRow, col);
+  if (src.font) dst.font = JSON.parse(JSON.stringify(src.font));
+  if (src.alignment) dst.alignment = JSON.parse(JSON.stringify(src.alignment));
+  if (src.border) dst.border = JSON.parse(JSON.stringify(src.border));
+  if (src.numFmt) dst.numFmt = src.numFmt;
+  if (src.fill && src.fill.type) dst.fill = JSON.parse(JSON.stringify(src.fill));
+}
+
+function copyRowHeight(ws, srcRow, dstRow) {
+  const src = ws.getRow(srcRow);
+  const dst = ws.getRow(dstRow);
+  if (src.height) dst.height = src.height;
+}
+
+async function generateExcel() {
+  const btn = document.getElementById('btnGenerate');
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  document.getElementById('logArea').innerHTML = '';
+  goStep(3);
+
+  try {
+    addLog('加载 Excel 文件...', 'info');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(excelFile);
+
+    const sheetName = document.getElementById('sheetName').value;
+    const ws = wb.getWorksheet(sheetName);
+    if (!ws) {
+      addLog(`找不到工作表 "${sheetName}"，可用: ${wb.worksheets.map(s => s.name).join(', ')}`, 'err');
+      btn.disabled = false;
+      btn.textContent = '生成日记账 →';
+      return;
+    }
+    addLog(`工作表: ${sheetName}`, 'ok');
+
+    // Dynamically detect column positions
+    const cols = detectColumns(ws);
+    const iCol = cols.incomeCol;   // 收入
+    const jCol = cols.expenseCol;  // 支出
+    const kCol = cols.balanceCol;  // 余额
+    const iLtr = colLetter(iCol);
+    const jLtr = colLetter(jCol);
+    const kLtr = colLetter(kCol);
+    const noteCol = kCol + 1;
+    addLog(`列检测: 收入=${iLtr}(${iCol}), 支出=${jLtr}(${jCol}), 余额=${kLtr}(${kCol})`, 'info');
+
+    const lastYtd = findLastYtdRow(ws);
+    if (!lastYtd) {
+      addLog('找不到上月"本年累计"行', 'err');
+      btn.disabled = false;
+      btn.textContent = '生成日记账 →';
+      return;
+    }
+    addLog(`上月本年累计: 行 ${lastYtd}`, 'info');
+
+    // Find previous 本年累计 row (for 本年累计 formula referencing previous month)
+    let prevYtd = null;
+    for (let row = 3; row < lastYtd; row++) {
+      if (getCellText(ws.getCell(row, 5)) === '本年累计') prevYtd = row;
+    }
+
+    const ref = findRefRows(ws);
+    addLog(`格式参考行: 数据=${ref.dataRow}, 合计=${ref.totalRow}, 累计=${ref.ytdRow}`, 'info');
+
+    // Preserve row heights for all existing rows (ExcelJS may lose them on load/save)
+    for (let r = 1; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      if (!row.height) row.height = 19.5;
+    }
+
+    const allCols = [];
+    for (let c = 1; c <= Math.max(kCol + 1, 11); c++) allCols.push(c);
+
+    const startRow = lastYtd + 1;
+    const lastDataRow = startRow + entries.length - 1;
+    const totalRowNum = lastDataRow + 1;
+    const ytdRowNum = totalRowNum + 1;
+
+    addLog(`写入 ${entries.length} 条数据到行 ${startRow}-${lastDataRow}...`, 'info');
+
+    // Data font style
+    const dataFont = { name: '微软雅黑', size: 9 };
+    const boldFont = { name: '微软雅黑', size: 9, bold: true };
+    const amtFmt = '#,##0.00';
+
+    // Write data rows
+    for (let idx = 0; idx < entries.length; idx++) {
+      const row = startRow + idx;
+      const e = entries[idx];
+      // Copy format + row height from reference
+      for (const col of allCols) copyCellStyle(ws, ref.dataRow, row, col);
+      copyRowHeight(ws, ref.dataRow, row);
+      ws.getRow(row).height = 19.5;
+      // Values
+      ws.getCell(row, 1).value = e.A;
+      ws.getCell(row, 2).value = e.B;
+      if (e.C != null) ws.getCell(row, 3).value = e.C;
+      ws.getCell(row, 4).value = e.D;
+      ws.getCell(row, 5).value = e.E;
+      if (e.H != null) { ws.getCell(row, iCol).value = e.H; ws.getCell(row, iCol).numFmt = amtFmt; }
+      if (e.I != null) { ws.getCell(row, jCol).value = e.I; ws.getCell(row, jCol).numFmt = amtFmt; }
+      if (e.note) ws.getCell(row, noteCol).value = e.note;
+      // Balance formula: K{row} = K{prev} + I{row} - J{row}
+      const prev = row === startRow ? lastYtd : row - 1;
+      ws.getCell(row, kCol).value = { formula: `${kLtr}${prev}+${iLtr}${row}-${jLtr}${row}` };
+      ws.getCell(row, kCol).numFmt = amtFmt;
+      // Apply font to all cells
+      for (const col of allCols) ws.getCell(row, col).font = dataFont;
+    }
+
+    // 本月合计
+    addLog('写入本月合计...', 'info');
+    for (const col of allCols) copyCellStyle(ws, ref.totalRow, totalRowNum, col);
+    ws.getRow(totalRowNum).height = 19.5;
+    ws.getCell(totalRowNum, 5).value = '本月合计';
+    ws.getCell(totalRowNum, iCol).value = { formula: `SUM(${iLtr}${startRow}:${iLtr}${lastDataRow})` };
+    ws.getCell(totalRowNum, iCol).numFmt = amtFmt;
+    ws.getCell(totalRowNum, jCol).value = { formula: `SUM(${jLtr}${startRow}:${jLtr}${lastDataRow})` };
+    ws.getCell(totalRowNum, jCol).numFmt = amtFmt;
+    ws.getCell(totalRowNum, kCol).value = { formula: `${kLtr}${lastYtd}+${iLtr}${totalRowNum}-${jLtr}${totalRowNum}` };
+    ws.getCell(totalRowNum, kCol).numFmt = amtFmt;
+    for (const col of allCols) ws.getCell(totalRowNum, col).font = boldFont;
+
+    // 本年累计
+    addLog('写入本年累计...', 'info');
+    for (const col of allCols) copyCellStyle(ws, ref.ytdRow, ytdRowNum, col);
+    ws.getRow(ytdRowNum).height = 19.5;
+    ws.getCell(ytdRowNum, 5).value = '本年累计';
+    // 本年累计 = 上月本年累计 + 本月合计
+    if (prevYtd) {
+      ws.getCell(ytdRowNum, iCol).value = { formula: `${iLtr}${totalRowNum}+${iLtr}${lastYtd}` };
+      ws.getCell(ytdRowNum, jCol).value = { formula: `${jLtr}${totalRowNum}+${jLtr}${lastYtd}` };
+    } else {
+      // First month: 本年累计 = 本月合计
+      ws.getCell(ytdRowNum, iCol).value = { formula: `${iLtr}${totalRowNum}` };
+      ws.getCell(ytdRowNum, jCol).value = { formula: `${jLtr}${totalRowNum}` };
+    }
+    ws.getCell(ytdRowNum, iCol).numFmt = amtFmt;
+    ws.getCell(ytdRowNum, jCol).numFmt = amtFmt;
+    ws.getCell(ytdRowNum, kCol).value = { formula: `${kLtr}${lastYtd}+${iLtr}${totalRowNum}-${jLtr}${totalRowNum}` };
+    ws.getCell(ytdRowNum, kCol).numFmt = amtFmt;
+    for (const col of allCols) ws.getCell(ytdRowNum, col).font = boldFont;
+
+    // Generate output
+    addLog('生成输出文件...', 'info');
+    outputBuffer = await wb.xlsx.writeBuffer();
+
+    addLog('完成!', 'ok');
+    addLog(`数据行: ${startRow}-${lastDataRow}`, 'ok');
+    addLog(`本月合计: 行 ${totalRowNum}`, 'ok');
+    addLog(`本年累计: 行 ${ytdRowNum}`, 'ok');
+
+    document.getElementById('downloadInfo').textContent =
+      `${entries.length} 条记录 · 行 ${startRow}-${lastDataRow} · 余额列 ${kLtr}`;
+
+    // Show voucher button if template uploaded
+    document.getElementById('btnVoucher').style.display = voucherTemplateFile ? 'inline-flex' : 'none';
+
+  } catch (err) {
+    addLog('错误: ' + err.message, 'err');
+    console.error(err);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '生成日记账 →';
+}
+
+/* ============================================================
+   Download
+   ============================================================ */
+function downloadFile() {
+  if (!outputBuffer) return;
+  const blob = new Blob([outputBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  // Generate output filename
+  const month = document.getElementById('monthSelect').value.padStart(2, '0');
+  const base = excelFileName.replace(/\.xlsx?$/i, '');
+  a.download = `${base}_${month}月.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   Voucher Generation (凭单生成)
+   ============================================================ */
+
+// Adjust formula cell references by row offset
+function adjustFormulaRows(formula, offset) {
+  return formula.replace(/([A-Z])(\d+)/g, (m, col, row) =>
+    col + (parseInt(row) + offset)
+  );
+}
+
+// Clone a page block (rows srcStart..srcEnd) to dstStart with full formatting
+function clonePageBlock(ws, srcStart, srcEnd, dstStart, numCols) {
+  const offset = dstStart - srcStart;
+
+  // 1. Copy rows: height, cell styles, values
+  for (let r = srcStart; r <= srcEnd; r++) {
+    const dstR = r + offset;
+    const srcRow = ws.getRow(r);
+    const dstRow = ws.getRow(dstR);
+    if (srcRow.height) dstRow.height = srcRow.height;
+
+    for (let c = 1; c <= numCols; c++) {
+      const src = ws.getCell(r, c);
+      const dst = ws.getCell(dstR, c);
+      // Style
+      if (src.font) dst.font = JSON.parse(JSON.stringify(src.font));
+      if (src.alignment) dst.alignment = JSON.parse(JSON.stringify(src.alignment));
+      if (src.border) dst.border = JSON.parse(JSON.stringify(src.border));
+      if (src.numFmt) dst.numFmt = src.numFmt;
+      if (src.fill && src.fill.type) dst.fill = JSON.parse(JSON.stringify(src.fill));
+      // Value
+      const v = src.value;
+      if (v && typeof v === 'object' && v.formula) {
+        dst.value = { formula: adjustFormulaRows(v.formula, offset) };
+      } else if (v && typeof v === 'object' && v.richText) {
+        dst.value = JSON.parse(JSON.stringify(v));
+      } else {
+        dst.value = v;
+      }
+    }
+  }
+
+  // 2. Clone merged cell ranges
+  const merges = ws.model.merges || [];
+  for (const m of merges) {
+    const match = m.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+    if (!match) continue;
+    const r1 = parseInt(match[2]), r2 = parseInt(match[4]);
+    if (r1 >= srcStart && r2 <= srcEnd) {
+      const newRef = `${match[1]}${r1 + offset}:${match[3]}${r2 + offset}`;
+      try { ws.mergeCells(newRef); } catch (e) { /* already merged */ }
+    }
+  }
+}
+
+// Merge sub-numbered entries (银1-1, 银1-2 → one voucher with summed amount)
+function mergeSubEntries(list) {
+  const merged = [];
+  let i = 0;
+  while (i < list.length) {
+    const entry = list[i];
+    const m = entry.A.match(/^银(\d+)-(\d+)$/);
+    if (m) {
+      const baseNum = m[1];
+      const subs = [entry];
+      let j = i + 1;
+      while (j < list.length) {
+        const m2 = list[j].A.match(/^银(\d+)-(\d+)$/);
+        if (m2 && m2[1] === baseNum) { subs.push(list[j]); j++; }
+        else break;
+      }
+      // Merge: 银1-1-2 or 银17-1-2-3
+      const subNums = subs.map(s => s.A.match(/-(\d+)$/)[1]);
+      const mergedNum = `银${baseNum}-${subNums.join('-')}`;
+      const totalH = subs.reduce((s, e) => s + (e.H || 0), 0) || null;
+      const totalI = subs.reduce((s, e) => s + (e.I || 0), 0) || null;
+      merged.push({
+        A: mergedNum,
+        B: entry.B, C: entry.C, D: entry.D,
+        E: subs.map(s => s.E).join('；'),
+        H: totalH, I: totalI,
+      });
+      i = j;
+    } else {
+      merged.push(entry);
+      i++;
+    }
+  }
+  return merged;
+}
+
+async function generateVouchers() {
+  if (!voucherTemplateFile) { alert('请先上传凭单模板文件'); return; }
+  if (!entries || !entries.length) { alert('请先解析交易数据'); return; }
+
+  addLog('--- 开始生成凭单 ---', 'info');
+
+  try {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(voucherTemplateFile);
+    wb.calcProperties = { fullCalcOnLoad: true };
+
+    const month = parseInt(document.getElementById('monthSelect').value);
+    const yearMatch = document.getElementById('sheetName').value.match(/(\d{4})/);
+    const year = yearMatch ? parseInt(yearMatch[1]) : new Date().getFullYear();
+
+    // Merge sub-numbered entries before splitting into expenses/incomes
+    const mergedEntries = mergeSubEntries(entries);
+    const expenses = mergedEntries.filter(e => e.I != null);
+    const incomes = mergedEntries.filter(e => e.H != null);
+
+    addLog(`支出 ${expenses.length} 条, 收入 ${incomes.length} 条`, 'info');
+
+    // ---- 支付凭单 ----
+    const paySheet = wb.getWorksheet('支付凭单');
+    if (paySheet && expenses.length > 0) {
+      const pageRows = 20;   // 2 vouchers per page, 10 rows each
+      const voucherRows = 10;
+      const numCols = 12;    // A-L
+
+      // Expand pages
+      const numPages = Math.ceil(expenses.length / 2);
+      for (let p = 1; p < numPages; p++) {
+        clonePageBlock(paySheet, 1, pageRows, 1 + p * pageRows, numCols);
+      }
+
+      // Fill each voucher
+      expenses.forEach((entry, idx) => {
+        const page = Math.floor(idx / 2);
+        const pos = idx % 2;
+        const baseRow = page * pageRows + pos * voucherRows + 1;
+
+        // Date: row+2, col D(4) — merged D:F
+        const day = entry.C != null ? entry.C : '';
+        paySheet.getCell(baseRow + 2, 4).value = `${year}年${entry.B}月${day}日`;
+
+        // Voucher number: row+2, col G(7)
+        paySheet.getCell(baseRow + 2, 7).value = `第${entry.A}号`;
+
+        // Description: row+3, col B(2) — 费用分类
+        paySheet.getCell(baseRow + 3, 2).value = entry.D;
+
+        // Numeric amount: row+5, col G(7) — grey cell
+        paySheet.getCell(baseRow + 5, 7).value = entry.I;
+        paySheet.getCell(baseRow + 5, 7).numFmt = '#,##0.00';
+      });
+
+      addLog(`支付凭单: ${expenses.length} 张, ${numPages} 页`, 'ok');
+    } else if (!paySheet) {
+      addLog('模板中未找到"支付凭单"工作表', 'warn');
+    }
+
+    // ---- 收入凭单 ----
+    const recSheet = wb.getWorksheet('收入凭单');
+    if (recSheet && incomes.length > 0) {
+      // 收入凭单: voucher 1 amount at row 6, voucher 2 at row 15, offset=9
+      const voucherRows = 9;
+      const pageRows = recSheet.lastRow ? recSheet.lastRow.number : 19;
+      const numCols = 9;
+
+      const numPages = Math.ceil(incomes.length / 2);
+      for (let p = 1; p < numPages; p++) {
+        clonePageBlock(recSheet, 1, pageRows, 1 + p * pageRows, numCols);
+      }
+
+      incomes.forEach((entry, idx) => {
+        const page = Math.floor(idx / 2);
+        const pos = idx % 2;
+        const baseRow = page * pageRows + pos * voucherRows + 1;
+
+        // Date: row+2, col D(4)
+        const day = entry.C != null ? entry.C : '';
+        recSheet.getCell(baseRow + 2, 4).value = `${year}年${entry.B}月${day}日`;
+
+        // Voucher number: row+2, col G(7)
+        recSheet.getCell(baseRow + 2, 7).value = `第${entry.A}号`;
+
+        // Description: row+4, col B(2) — after "收到"
+        recSheet.getCell(baseRow + 4, 2).value = entry.D;
+
+        // Numeric amount: row+5, col G(7) — grey cell
+        recSheet.getCell(baseRow + 5, 7).value = entry.H;
+        recSheet.getCell(baseRow + 5, 7).numFmt = '#,##0.00';
+      });
+
+      addLog(`收入凭单: ${incomes.length} 张, ${numPages} 页`, 'ok');
+    } else if (!recSheet) {
+      addLog('模板中未找到"收入凭单"工作表', 'warn');
+    }
+
+    // Download
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const monthStr = String(month).padStart(2, '0');
+    a.download = `财务凭单_${year}年${monthStr}月.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    addLog('凭单生成完成!', 'ok');
+
+  } catch (err) {
+    addLog('凭单生成错误: ' + err.message, 'err');
+    console.error(err);
+  }
+}
+
+/* ============================================================
+   Entrance Animations
+   ============================================================ */
+(function() {
+  // Stagger-fade header
+  const header = document.querySelector('.header');
+  if (header) {
+    header.style.opacity = '0';
+    header.style.transform = 'translateY(-12px)';
+    header.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    setTimeout(() => {
+      header.style.opacity = '1';
+      header.style.transform = 'translateY(0)';
+    }, 100);
+  }
+
+  // Stagger-fade step dots
+  document.querySelectorAll('.step-dot').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'scale(0.5)';
+    el.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+    setTimeout(() => {
+      el.style.opacity = '1';
+      el.style.transform = 'scale(1)';
+    }, 300 + i * 120);
+  });
+
+  // Fade-in cards
+  document.querySelectorAll('.card').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    el.style.transition = 'opacity 0.5s ease, transform 0.5s ease, box-shadow 0.3s ease';
+    setTimeout(() => {
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0)';
+    }, 500 + i * 100);
+  });
+})();
+
+/* ============================================================
+   Random Philosophical Quote
+   ============================================================ */
+(function() {
+  const quotes = [
+    '天下难事，必作于易；天下大事，必作于细。 —— 老子',
+    '知之为知之，不知为不知，是知也。 —— 孔子',
+    '路漫漫其修远兮，吾将上下而求索。 —— 屈原',
+    '不积跬步，无以至千里；不积小流，无以成江海。 —— 荀子',
+    '博学之，审问之，慎思之，明辨之，笃行之。 —— 《中庸》',
+    '工欲善其事，必先利其器。 —— 孔子',
+    '千里之行，始于足下。 —— 老子',
+    '三人行，必有我师焉。 —— 孔子',
+    '穷则独善其身，达则兼善天下。 —— 孟子',
+    '业精于勤，荒于嬉；行成于思，毁于随。 —— 韩愈',
+    '人生如逆旅，我亦是行人。 —— 苏轼',
+    '大道至简，知易行难。',
+  ];
+  const el = document.getElementById('footerQuote');
+  if (el) el.textContent = '「' + quotes[Math.floor(Math.random() * quotes.length)] + '」';
+})();
+
+/* ============================================================
+   Auto-load Voucher Template from Server
+   ============================================================ */
+(async function() {
+  try {
+    const resp = await fetch('voucher_template.xlsx');
+    if (resp.ok) {
+      voucherTemplateFile = await resp.arrayBuffer();
+      const vdz = document.getElementById('voucherDropZone');
+      vdz.classList.add('has-file');
+      vdz.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:20px">📋</span>
+          <span class="file-name" style="color:var(--success)">凭单模板已自动加载</span>
+          <small style="color:var(--text-dim)">点击可替换</small>
+        </div>
+        <input type="file" id="voucherFileInput" accept=".xlsx,.xls" style="display:none">
+      `;
+      const newInput = vdz.querySelector('input');
+      newInput.addEventListener('change', () => { if (newInput.files.length) handleVoucherFile(newInput.files[0]); });
+    }
+  } catch(e) { /* local file:// access, ignore */ }
+})();
+</script>
+</body>
+</html>
