@@ -14,8 +14,15 @@ const JavaScriptObfuscator = require('javascript-obfuscator');
 const INPUT  = path.join(__dirname, 'journal_generator.html');
 const OUTPUT = path.join(__dirname, 'journal_generator.min.html');
 
-// -- 1. Read the source HTML --
-const html = fs.readFileSync(INPUT, 'utf-8');
+// -- 1. Read the source HTML and update version to current Beijing time --
+let html = fs.readFileSync(INPUT, 'utf-8');
+const now = new Date(Date.now() + 8 * 3600 * 1000); // UTC+8
+const ver = 'v' + now.toISOString().slice(0,10).replace(/-/g,'') + '.' +
+  now.toISOString().slice(11,13) + now.toISOString().slice(14,16);
+html = html.replace(/v\d{8}\.\d{4}/, ver);
+// Also update the source file with the new version
+fs.writeFileSync(INPUT, html, 'utf-8');
+console.log('  Version  :', ver);
 
 // -- 2. Extract CSS from <style>...</style> --
 const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
